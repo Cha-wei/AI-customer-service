@@ -5,6 +5,7 @@ import { requireAdminSession } from "@/modules/admin-auth";
 import { PrismaExecutionReader } from "@/modules/agent-runtime/prisma-execution-reader";
 import { ConversationNotFoundError } from "@/modules/conversations";
 import { getConversationService } from "@/modules/conversations/composition-root";
+import { MessageHistory } from "./message-history";
 
 export const dynamic = "force-dynamic";
 const statusLabels: Record<string, string> = { open: "待处理", processing: "处理中", waiting_approval: "待审批", human_handoff: "人工接管", resolved: "已解决" };
@@ -16,7 +17,7 @@ export default async function ConversationDetail({ params, searchParams }: { par
   const filters = await searchParams;
   const requestedExecutionPage = /^\d+$/.test(filters?.executionPage ?? "") ? Number(filters?.executionPage) : 1;
   const executionPage = Number.isSafeInteger(requestedExecutionPage) && requestedExecutionPage > 0 && requestedExecutionPage <= 20_001 ? requestedExecutionPage : 1;
-  const { conversation, page } = await loadConversation(conversationId, executionPage);
+  const { conversation, messages, page } = await loadConversation(conversationId, executionPage);
   if (executionPage > 1 && page.executions.length === 0) redirect(`/conversations/${encodeURIComponent(conversationId)}`);
   const notice = filters?.notice;
 
@@ -31,8 +32,8 @@ export default async function ConversationDetail({ params, searchParams }: { par
       </form>}
     {conversation.status === "processing" && <p>正在执行，请等待执行结束后再更新状态。</p>}
     <div className="detail-grid">
-      <section className="panel" aria-labelledby="messages-title"><div className="panel-heading"><div><h2 id="messages-title">消息记录</h2><p>{conversation.messages.length} 条消息</p></div></div>
-        {conversation.messages.length === 0 ? <Empty text="暂无消息记录" /> : <div className="message-list">{conversation.messages.map((message) => <article className={`message message-${message.role}`} key={message.id}><div className="message-meta"><strong>{message.role === "customer" ? "客户" : message.role === "agent" ? "AI 客服" : "系统"}</strong><time dateTime={message.createdAt.toISOString()}>{formatDate(message.createdAt)}</time></div><p>{message.content}</p></article>)}</div>}
+      <section className="panel" aria-labelledby="messages-title"><div className="panel-heading"><div><h2 id="messages-title">消息记录</h2><p>默认显示最新 50 条</p></div></div>
+        <MessageHistory conversationId={conversation.id} initialMessages={messages.messages} initialCursor={messages.nextCursor} />
       </section>
       <section className="panel" aria-labelledby="executions-title"><div className="panel-heading"><div><h2 id="executions-title">执行记录</h2><p>本页 {page.executions.length} 条 · 按时间从早到晚</p></div></div>
         {page.executions.length === 0 ? <Empty text="暂无执行记录" /> : <div className="execution-list">{page.executions.map((execution) => <article className="execution" key={execution.id}><div className="execution-heading"><span className={`status execution-${execution.status}`}>{executionLabels[execution.status]}</span><time dateTime={execution.createdAt.toISOString()}>{formatDate(execution.createdAt)}</time></div><dl><div><dt>工具结果</dt><dd>{formatResult(execution.toolResult)}</dd></div><div><dt>失败原因</dt><dd>{execution.errorCode ?? "—"}</dd></div><div><dt>完成时间</dt><dd>{execution.finishedAt ? formatDate(execution.finishedAt) : "—"}</dd></div></dl></article>)}</div>}
@@ -48,8 +49,9 @@ export default async function ConversationDetail({ params, searchParams }: { par
 
 async function loadConversation(conversationId: string, executionPage: number) {
   try {
-    const [conversation, page] = await Promise.all([getConversationService().get(conversationId), new PrismaExecutionReader(prisma).list(conversationId, (executionPage - 1) * 50)]);
-    return { conversation, page };
+    const service = getConversationService();
+    const [conversation, messages, page] = await Promise.all([service.getHeader(conversationId), service.listMessages({ conversationId }), new PrismaExecutionReader(prisma).list(conversationId, (executionPage - 1) * 50)]);
+    return { conversation, messages, page };
   } catch (error) { if (error instanceof ConversationNotFoundError) notFound(); throw error; }
 }
 

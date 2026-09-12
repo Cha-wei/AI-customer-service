@@ -17,6 +17,7 @@ import type {
   ConversationRepository,
   CreateConversationRecord,
   ListConversationsQuery,
+  MessagePage,
 } from "./repository";
 
 type ConversationWithMessages = Prisma.ConversationGetPayload<{
@@ -89,6 +90,38 @@ export class PrismaConversationRepository implements ConversationRepository {
     });
 
     return record ? mapConversation(record) : null;
+  }
+
+  async findHeaderById(conversationId: string) {
+    const record = await this.client.conversation.findUnique({ where: { id: conversationId } });
+    if (!record || !isConversationStatus(record.status)) return null;
+    return { id: record.id, customerId: record.customerId, status: record.status, createdAt: record.createdAt, updatedAt: record.updatedAt };
+  }
+
+  async listMessages(input: { conversationId: string; customerId?: string; before?: { createdAt: Date; id: string }; pageSize: number }): Promise<MessagePage | null> {
+    const conversation = await this.client.conversation.findFirst({
+      where: { id: input.conversationId, ...(input.customerId ? { customerId: input.customerId } : {}) },
+      select: { id: true },
+    });
+    if (!conversation) return null;
+    const records = await this.client.message.findMany({
+      where: {
+        conversationId: input.conversationId,
+        ...(input.before ? { OR: [
+          { createdAt: { lt: input.before.createdAt } },
+          { createdAt: input.before.createdAt, id: { lt: input.before.id } },
+        ] } : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: input.pageSize + 1,
+    });
+    const hasMore = records.length > input.pageSize;
+    const pageRecords = records.slice(0, input.pageSize);
+    const oldest = pageRecords.at(-1);
+    return {
+      messages: pageRecords.reverse().map(mapMessage),
+      nextCursor: hasMore && oldest ? { createdAt: oldest.createdAt, id: oldest.id } : null,
+    };
   }
 
   async list(input: ListConversationsQuery): Promise<ConversationPage> {

@@ -1,27 +1,29 @@
 import { render, screen } from "@testing-library/react";
 import ConversationDetail from "./page";
 
-const { get, listExecutions } = vi.hoisted(() => ({ get: vi.fn(), listExecutions: vi.fn() }));
+const { getHeader, listMessages, listExecutions } = vi.hoisted(() => ({ getHeader: vi.fn(), listMessages: vi.fn(), listExecutions: vi.fn() }));
 vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/modules/conversations/composition-root", () => ({
-  getConversationService: () => ({ get }),
+  getConversationService: () => ({ getHeader, listMessages }),
 }));
 vi.mock("@/modules/agent-runtime/prisma-execution-reader", () => ({
   PrismaExecutionReader: class { list = listExecutions; },
 }));
 
 describe("conversation detail page", () => {
-  beforeEach(() => { get.mockReset(); listExecutions.mockReset(); });
+  beforeEach(() => { getHeader.mockReset(); listMessages.mockReset(); listExecutions.mockReset(); });
 
   it("shows messages and execution details", async () => {
     const createdAt = new Date("2026-09-12T08:00:00Z");
-    get.mockResolvedValue({
+    getHeader.mockResolvedValue({
       id: "conversation-1", customerId: "customer-1", status: "open", createdAt, updatedAt: createdAt,
+    });
+    listMessages.mockResolvedValue({
       messages: [
         { id: "message-1", role: "customer", content: "我的订单什么时候到？", createdAt },
         { id: "message-2", role: "agent", content: "订单正在运输中。", createdAt },
-      ],
+      ], nextCursor: "older",
     });
     listExecutions.mockResolvedValue({
       executions: [{
@@ -36,6 +38,7 @@ describe("conversation detail page", () => {
     expect(screen.getByRole("heading", { name: "customer-1" })).toBeInTheDocument();
     expect(screen.getByText("我的订单什么时候到？")).toBeInTheDocument();
     expect(screen.getByText("订单正在运输中。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加载更早消息" })).toBeInTheDocument();
     expect(screen.getByText(/Mock Express/)).toBeInTheDocument();
     expect(screen.getByText("已完成")).toBeInTheDocument();
     expect(listExecutions).toHaveBeenCalledWith("conversation-1", 0);
@@ -43,10 +46,11 @@ describe("conversation detail page", () => {
 
   it("shows empty states", async () => {
     const createdAt = new Date("2026-09-12T08:00:00Z");
-    get.mockResolvedValue({
+    getHeader.mockResolvedValue({
       id: "conversation-1", customerId: "customer-1", status: "open",
-      messages: [], createdAt, updatedAt: createdAt,
+      createdAt, updatedAt: createdAt,
     });
+    listMessages.mockResolvedValue({ messages: [], nextCursor: null });
     listExecutions.mockResolvedValue({ executions: [], nextOffset: null });
 
     render(await ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }) }));
@@ -56,7 +60,8 @@ describe("conversation detail page", () => {
 
   it("reads and links execution history pages", async () => {
     const createdAt = new Date("2026-09-12T08:00:00Z");
-    get.mockResolvedValue({ id: "conversation-1", customerId: "customer-1", status: "open", messages: [], createdAt, updatedAt: createdAt });
+    getHeader.mockResolvedValue({ id: "conversation-1", customerId: "customer-1", status: "open", createdAt, updatedAt: createdAt });
+    listMessages.mockResolvedValue({ messages: [], nextCursor: null });
     listExecutions.mockResolvedValue({ executions: [{ id: "e", status: "completed", createdAt, finishedAt: null, toolResult: null, errorCode: null }], nextOffset: 100 });
 
     render(await ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }), searchParams: Promise.resolve({ executionPage: "2" }) }));
@@ -67,7 +72,8 @@ describe("conversation detail page", () => {
   });
 
   it("redirects an empty out-of-range page to the first page", async () => {
-    get.mockResolvedValue({ id: "conversation-1" });
+    getHeader.mockResolvedValue({ id: "conversation-1" });
+    listMessages.mockResolvedValue({ messages: [], nextCursor: null });
     listExecutions.mockResolvedValue({ executions: [], nextOffset: null });
     await expect(ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }), searchParams: Promise.resolve({ executionPage: "99" }) })).rejects.toMatchObject({ digest: expect.stringContaining("/conversations/conversation-1") });
   });

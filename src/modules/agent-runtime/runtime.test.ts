@@ -12,6 +12,8 @@ function setup(customerId = "customer-1", question = "我的订单什么时候�
   const repository: ConversationRepository = {
     create: vi.fn(async () => state),
     findById: vi.fn(async () => state),
+    findHeaderById: vi.fn(async () => state),
+    listMessages: vi.fn(async () => ({ messages: state.messages, nextCursor: null })),
     list: vi.fn(async () => ({ conversations: [], page: 1, pageSize: 20, total: 0 })),
     updateStatus: vi.fn(async (_id, status) => { state.status = status; return state; }),
     appendMessage: vi.fn(async (input) => {

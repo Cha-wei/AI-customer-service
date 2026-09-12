@@ -11,11 +11,17 @@ import {
   ConversationValidationError,
   InvalidConversationTransitionError,
 } from "./errors";
-import type { ConversationPage, ConversationRepository } from "./repository";
+import type { ConversationHeader, ConversationPage, ConversationRepository } from "./repository";
 
 const MAX_CUSTOMER_ID_LENGTH = 128;
 const MAX_MESSAGE_LENGTH = 10_000;
 const CONVERSATION_PAGE_SIZE = 20;
+export const MESSAGE_PAGE_SIZE = 50;
+
+export interface SerializedMessagePage {
+  messages: Message[];
+  nextCursor: string | null;
+}
 
 export interface CreateConversationInput {
   customerId: string;
@@ -84,6 +90,26 @@ export class ConversationService {
     return conversation;
   }
 
+  async getHeader(conversationId: string): Promise<ConversationHeader> {
+    const id = validateText(conversationId, "conversationId", 128);
+    const conversation = await this.repository.findHeaderById(id);
+    if (!conversation) throw new ConversationNotFoundError(id);
+    return conversation;
+  }
+
+  async listMessages(input: { conversationId: string; customerId?: string; before?: string }): Promise<SerializedMessagePage> {
+    const conversationId = validateText(input.conversationId, "conversationId", 128);
+    const before = input.before ? decodeMessageCursor(input.before) : undefined;
+    const page = await this.repository.listMessages({
+      conversationId,
+      ...(input.customerId ? { customerId: validateText(input.customerId, "customerId", MAX_CUSTOMER_ID_LENGTH) } : {}),
+      ...(before ? { before } : {}),
+      pageSize: MESSAGE_PAGE_SIZE,
+    });
+    if (!page) throw new ConversationNotFoundError(conversationId);
+    return { messages: page.messages, nextCursor: page.nextCursor ? encodeMessageCursor(page.nextCursor) : null };
+  }
+
   list(input: { customerId?: string; query?: string; status?: ConversationStatus | ""; page?: number } = {}): Promise<ConversationPage> {
     const requestedPage = input.page ?? 1;
     const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
@@ -119,6 +145,22 @@ export class ConversationService {
     }
 
     return updated;
+  }
+}
+
+function encodeMessageCursor(cursor: { createdAt: Date; id: string }): string {
+  return Buffer.from(JSON.stringify([cursor.createdAt.toISOString(), cursor.id])).toString("base64url");
+}
+
+function decodeMessageCursor(value: string): { createdAt: Date; id: string } {
+  try {
+    const decoded: unknown = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (!Array.isArray(decoded) || decoded.length !== 2 || typeof decoded[0] !== "string" || typeof decoded[1] !== "string" || !decoded[1]) throw new Error();
+    const createdAt = new Date(decoded[0]);
+    if (Number.isNaN(createdAt.getTime())) throw new Error();
+    return { createdAt, id: decoded[1] };
+  } catch {
+    throw new ConversationValidationError("before cursor is invalid.");
   }
 }
 

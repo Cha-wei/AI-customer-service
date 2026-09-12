@@ -26,6 +26,8 @@ function repositoryStub(
     create: vi.fn(async () => conversation()),
     appendMessage: vi.fn(async () => null),
     findById: vi.fn(async () => conversation()),
+    findHeaderById: vi.fn(async () => conversation()),
+    listMessages: vi.fn(async () => ({ messages: [], nextCursor: null })),
     list: vi.fn(async () => ({ conversations: [], page: 1, pageSize: 20, total: 0 })),
     updateStatus: vi.fn(async () => conversation("processing")),
     ...overrides,
@@ -105,5 +107,13 @@ describe("ConversationService", () => {
     await service.list({ customerId: "customer-1", query: "  order  ", status: "open", page: -2 });
 
     expect(list).toHaveBeenCalledWith({ customerId: "customer-1", query: "order", status: "open", page: 1, pageSize: 20 });
+  });
+
+  it("uses a fixed 50-message page and rejects malformed cursors", async () => {
+    const listMessages = vi.fn(async () => ({ messages: [], nextCursor: null }));
+    const service = new ConversationService(repositoryStub({ listMessages }));
+    await service.listMessages({ conversationId: "conversation-1" });
+    expect(listMessages).toHaveBeenCalledWith({ conversationId: "conversation-1", pageSize: 50 });
+    await expect(service.listMessages({ conversationId: "conversation-1", before: "not-a-cursor" })).rejects.toBeInstanceOf(ConversationValidationError);
   });
 });

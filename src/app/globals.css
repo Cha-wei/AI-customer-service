@@ -32,7 +32,8 @@ input:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rg
 .detail-header { align-items: center; } .detail-header .muted { margin: 8px 0 0; }
 .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
 .detail-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 22px; align-items: start; }
-.message-list, .execution-list { padding: 20px; } .message { max-width: 88%; margin-bottom: 16px; padding: 15px 17px; border-radius: 14px; background: #f2f4f8; }
+.message-list, .execution-list { padding: 20px; } .message-list { max-height: 640px; overflow-y: auto; overflow-anchor: none; } .message-page-controls { display: flex; min-height: 48px; align-items: center; justify-content: center; gap: 12px; padding: 8px 20px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; } .message-page-controls [role="alert"] { color: #a42b2b; }
+.message { max-width: 88%; margin-bottom: 16px; padding: 15px 17px; border-radius: 14px; background: #f2f4f8; }
 .message-agent { margin-left: auto; background: #e8f0ff; } .message-system { border: 1px dashed #cbd2df; background: #fff; }
 .message-meta, .execution-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 9px; }
 .message p { margin: 0; line-height: 1.6; white-space: pre-wrap; }

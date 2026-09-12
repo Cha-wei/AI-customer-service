@@ -73,6 +73,31 @@ describe("PrismaConversationRepository", () => {
     ]);
   });
 
+  it("reads 50-message pages newest-first at the database boundary and returns them chronologically", async () => {
+    const created = await repository.create({ customerId: "owner", status: "open", initialMessage: { role: "customer", content: "seed" } });
+    await client.message.deleteMany({ where: { conversationId: created.id } });
+    const timestamp = new Date("2026-09-13T00:00:00.000Z");
+    await client.message.createMany({ data: Array.from({ length: 101 }, (_, i) => ({
+      id: `message-${String(i).padStart(3, "0")}`, conversationId: created.id, role: "customer", content: String(i), createdAt: timestamp,
+    })) });
+
+    const latest = await repository.listMessages({ conversationId: created.id, pageSize: 50 });
+    expect(latest?.messages.map((message) => message.id)).toEqual(Array.from({ length: 50 }, (_, i) => `message-${String(i + 51).padStart(3, "0")}`));
+    expect(latest?.nextCursor).toEqual({ createdAt: timestamp, id: "message-051" });
+    const middle = await repository.listMessages({ conversationId: created.id, before: latest!.nextCursor!, pageSize: 50 });
+    expect(middle?.messages[0].id).toBe("message-001");
+    expect(middle?.messages.at(-1)?.id).toBe("message-050");
+    const oldest = await repository.listMessages({ conversationId: created.id, before: middle!.nextCursor!, pageSize: 50 });
+    expect(oldest).toMatchObject({ messages: [{ id: "message-000" }], nextCursor: null });
+  });
+
+  it("applies customer isolation before reading message pages", async () => {
+    const owned = await repository.create({ customerId: "owner", status: "open", initialMessage: { role: "customer", content: "owned" } });
+    const foreign = await repository.create({ customerId: "other", status: "open", initialMessage: { role: "customer", content: "foreign" } });
+    expect((await repository.listMessages({ conversationId: owned.id, customerId: "owner", pageSize: 50 }))?.messages[0].content).toBe("owned");
+    await expect(repository.listMessages({ conversationId: foreign.id, customerId: "owner", pageSize: 50 })).resolves.toBeNull();
+  });
+
   it("returns the latest message in the conversation list", async () => {
     const created = await repository.create({
       customerId: "customer-2",

@@ -35,3 +35,21 @@ export async function POST(request: Request, context: RouteContext) {
     throw error;
   }
 }
+
+export async function GET(request: Request, context: RouteContext) {
+  try {
+    const principal = authenticate(request);
+    const { conversationId } = await context.params;
+    const before = new URL(request.url).searchParams.get("before") ?? undefined;
+    const page = await getConversationService().listMessages({
+      conversationId,
+      ...(principal.role === "customer" ? { customerId: principal.customerId } : {}),
+      before,
+    });
+    return NextResponse.json({ data: page.messages, nextCursor: page.nextCursor }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    const response = conversationErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
+}
