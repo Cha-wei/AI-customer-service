@@ -1,0 +1,183 @@
+import {
+  Prisma,
+  PrismaClient,
+  type Conversation as ConversationRecord,
+} from "@prisma/client";
+
+import {
+  isConversationStatus,
+  isMessageRole,
+  type Conversation,
+  type ConversationSummary,
+  type Message,
+} from "./domain";
+import type {
+  AppendMessageRecord,
+  ConversationRepository,
+  CreateConversationRecord,
+} from "./repository";
+
+type ConversationWithMessages = Prisma.ConversationGetPayload<{
+  include: { messages: true };
+}>;
+
+type ConversationWithLatestMessage = ConversationRecord & {
+  messages: Prisma.MessageGetPayload<Record<string, never>>[];
+};
+
+export class PrismaConversationRepository implements ConversationRepository {
+  constructor(private readonly client: PrismaClient) {}
+
+  async create(input: CreateConversationRecord): Promise<Conversation> {
+    const record = await this.client.conversation.create({
+      data: {
+        customerId: input.customerId,
+        status: input.status,
+        messages: {
+          create: input.initialMessage,
+        },
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    return mapConversation(record);
+  }
+
+  async appendMessage(input: AppendMessageRecord): Promise<Message | null> {
+    try {
+      const [, message] = await this.client.$transaction([
+        this.client.conversation.update({
+          where: { id: input.conversationId },
+          data: { updatedAt: new Date() },
+        }),
+        this.client.message.create({
+          data: {
+            conversationId: input.conversationId,
+            role: input.role,
+            content: input.content,
+          },
+        }),
+      ]);
+
+      return mapMessage(message);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2025" || error.code === "P2003")
+      ) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
+  async findById(conversationId: string): Promise<Conversation | null> {
+    const record = await this.client.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        messages: {
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        },
+      },
+    });
+
+    return record ? mapConversation(record) : null;
+  }
+
+  async list(): Promise<ConversationSummary[]> {
+    const records = await this.client.conversation.findMany({
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      include: {
+        messages: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+        },
+      },
+    });
+
+    return records.map(mapSummary);
+  }
+
+  async updateStatus(
+    conversationId: string,
+    status: Conversation["status"],
+  ): Promise<Conversation | null> {
+    try {
+      const record = await this.client.conversation.update({
+        where: { id: conversationId },
+        data: { status },
+        include: {
+          messages: {
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+
+      return mapConversation(record);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2025"
+      ) {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+}
+
+function mapConversation(record: ConversationWithMessages): Conversation {
+  if (!isConversationStatus(record.status)) {
+    throw new Error("Unknown conversation status in persistence: " + record.status);
+  }
+
+  return {
+    id: record.id,
+    customerId: record.customerId,
+    status: record.status,
+    messages: record.messages.map(mapMessage),
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function mapSummary(record: ConversationWithLatestMessage): ConversationSummary {
+  if (!isConversationStatus(record.status)) {
+    throw new Error("Unknown conversation status in persistence: " + record.status);
+  }
+
+  return {
+    id: record.id,
+    customerId: record.customerId,
+    status: record.status,
+    latestMessage: record.messages[0] ? mapMessage(record.messages[0]) : null,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function mapMessage(record: {
+  id: string;
+  conversationId: string;
+  role: string;
+  content: string;
+  createdAt: Date;
+}): Message {
+  if (!isMessageRole(record.role)) {
+    throw new Error("Unknown message role in persistence: " + record.role);
+  }
+
+  return {
+    id: record.id,
+    conversationId: record.conversationId,
+    role: record.role,
+    content: record.content,
+    createdAt: record.createdAt,
+  };
+}
