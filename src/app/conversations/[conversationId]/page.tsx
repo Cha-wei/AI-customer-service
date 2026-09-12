@@ -10,14 +10,22 @@ export const dynamic = "force-dynamic";
 const statusLabels: Record<string, string> = { open: "待处理", processing: "处理中", waiting_approval: "待审批", human_handoff: "人工接管", resolved: "已解决" };
 const executionLabels: Record<string, string> = { running: "执行中", completed: "已完成", failed: "失败" };
 
-export default async function ConversationDetail({ params }: { params: Promise<{ conversationId: string }> }) {
+export default async function ConversationDetail({ params, searchParams }: { params: Promise<{ conversationId: string }>; searchParams?: Promise<{ notice?: string }> }) {
   await requireAdminSession();
   const { conversationId } = await params;
   const { conversation, page } = await loadConversation(conversationId);
+  const notice = (await searchParams)?.notice;
 
   return <main className="shell">
     <Link className="back-link" href="/">← 返回会话列表</Link>
     <header className="detail-header"><div><p className="eyebrow">会话详情</p><h1>{conversation.customerId}</h1><p className="muted mono">{conversation.id}</p></div><span className={`status status-${conversation.status}`}>{statusLabels[conversation.status] ?? conversation.status}</span></header>
+    {notice && <p role="alert">{notice === "conflict" ? "会话状态已改变或正在执行，请刷新后重试。" : "更新失败，请稍后重试。"}</p>}
+    {(conversation.status === "open" || conversation.status === "human_handoff") &&
+      <form className="panel-heading" action={`/api/admin/conversations/${conversation.id}/status`} method="post">
+        {conversation.status === "open" && <button name="status" value="human_handoff">转人工</button>}
+        <button name="status" value="resolved">标记已解决</button>
+      </form>}
+    {conversation.status === "processing" && <p>正在执行，请等待执行结束后再更新状态。</p>}
     <div className="detail-grid">
       <section className="panel" aria-labelledby="messages-title"><div className="panel-heading"><div><h2 id="messages-title">消息记录</h2><p>{conversation.messages.length} 条消息</p></div></div>
         {conversation.messages.length === 0 ? <Empty text="暂无消息记录" /> : <div className="message-list">{conversation.messages.map((message) => <article className={`message message-${message.role}`} key={message.id}><div className="message-meta"><strong>{message.role === "customer" ? "客户" : message.role === "agent" ? "AI 客服" : "系统"}</strong><time dateTime={message.createdAt.toISOString()}>{formatDate(message.createdAt)}</time></div><p>{message.content}</p></article>)}</div>}

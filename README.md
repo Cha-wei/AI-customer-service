@@ -1,5 +1,13 @@
 # AI Customer Service Workbench
 
+## Management workbench
+
+Configure `ADMIN_UI_PASSWORD` (12+ characters) and `ADMIN_UI_SESSION_SECRET` (32+ characters) in ignored local `.env`. Visit `/login`; production requires HTTPS for the Secure session cookie. Internal API Bearer credentials remain separate.
+
+The list shows 20 conversations per page and preserves search/status filters. MVP pagination currently slices the filtered summaries on the server; it does not reduce database reads. Detail pages allow open conversations to be handed off or resolved, and handed-off conversations to be resolved. Running executions block manual changes. Successful changes append a system message in the same transaction.
+
+Login has a shared single-process budget of five attempts per 15 minutes, reset on success. Restarting clears the budget; multiple instances need a shared limiter before deployment. All administrators share the cooldown. Login, logout and status POST requests require a matching Origin header; configure a reverse proxy to preserve the public origin.
+
 A modular AI customer service platform MVP. The current repository contains the runnable foundation only; customer service business modules will be added as independently testable vertical slices.
 
 ## Requirements

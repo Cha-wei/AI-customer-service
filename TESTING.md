@@ -31,3 +31,5 @@ pnpm build
 ```
 
 Before a stage is committed, run all relevant checks and ensure no secrets or local database files are included.
+
+After `pnpm build`, run `node scripts/verify-admin.mjs` for production HTTP acceptance: login, cookie flags, protected pages, mock order execution, status updates, logout and throttling. It uses temporary credentials/database and cleans them up. It tests cookie transport with an HTTP client; production browser access still requires HTTPS.

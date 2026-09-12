@@ -33,6 +33,16 @@ describe("conversation management page", () => {
     expect(screen.getByText("暂无会话")).toBeInTheDocument();
   });
 
+  it("paginates matching conversations and preserves filters", async () => {
+    const date = new Date();
+    list.mockResolvedValue(Array.from({ length: 25 }, (_, i) => ({ id: String(i), customerId: `customer-${i}`, status: "open", latestMessage: null, updatedAt: date })));
+    render(await Home({ searchParams: Promise.resolve({ query: "customer", status: "open", page: "2" }) }));
+    expect(screen.queryByText("customer-0")).not.toBeInTheDocument();
+    expect(screen.getByText("customer-24")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "上一页" })).toHaveAttribute("href", "/?query=customer&status=open&page=1");
+    expect(screen.queryByRole("link", { name: "下一页" })).not.toBeInTheDocument();
+  });
+
   it("filters by customer, message and status", async () => {
     const createdAt = new Date("2026-09-12T08:00:00Z");
     list.mockResolvedValue([

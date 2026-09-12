@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { AdminTransitionConflict, transitionFromAdmin } from "./admin-transition";
 
 import { PrismaConversationRepository } from "./prisma-repository";
 import { ConversationService } from "./service";
@@ -32,6 +33,20 @@ describe("PrismaConversationRepository", () => {
 
   afterAll(async () => {
     await client.$disconnect();
+  });
+
+  it("records admin updates and rejects stale or active updates", async () => {
+    const conversation = await repository.create({ customerId: "customer-1", status: "open", initialMessage: { role: "customer", content: "订单查询" } });
+    await transitionFromAdmin(client, conversation.id, "human_handoff");
+    await expect(transitionFromAdmin(client, conversation.id, "human_handoff")).rejects.toThrow(AdminTransitionConflict);
+    await transitionFromAdmin(client, conversation.id, "resolved");
+    expect((await repository.findById(conversation.id))?.messages.filter((m) => m.role === "system")).toHaveLength(2);
+    await expect(transitionFromAdmin(client, conversation.id, "open")).rejects.toThrow(AdminTransitionConflict);
+    const active = await repository.create({ customerId: "customer-1", status: "open", initialMessage: { role: "customer", content: "订单查询" } });
+    const execution = await new PrismaExecutionStore(client).begin(active.id, active.messages[0].id);
+    await expect(transitionFromAdmin(client, active.id, "resolved")).rejects.toThrow(AdminTransitionConflict);
+    expect((await client.runtimeExecution.findUniqueOrThrow({ where: { id: execution } })).status).toBe("running");
+    expect((await repository.findById(active.id))?.messages).toHaveLength(1);
   });
 
   it("persists a conversation and returns its ordered message history", async () => {
