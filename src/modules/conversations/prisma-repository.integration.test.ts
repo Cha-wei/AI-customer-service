@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 
 import { PrismaConversationRepository } from "./prisma-repository";
+import { ConversationService } from "./service";
+import { CustomerServiceRuntime, RuleIntentProvider } from "../agent-runtime";
+import { OrderQueryTool } from "../tools";
+import { MockCustomerContextProvider } from "../customer-context";
 
 describe("PrismaConversationRepository", () => {
   const client = new PrismaClient();
@@ -78,5 +82,18 @@ describe("PrismaConversationRepository", () => {
         content: "Hello",
       }),
     ).resolves.toBeNull();
+  });
+
+  it("persists the runtime order-query reply and final state in SQLite", async () => {
+    const service = new ConversationService(repository);
+    const created = await service.create({ customerId: "customer-1", initialMessage: "我的订单什么时候到？" });
+    const runtime = new CustomerServiceRuntime(service, new RuleIntentProvider(), {
+      orderQuery: new OrderQueryTool(new MockCustomerContextProvider()),
+    });
+    const result = await runtime.run(created.id);
+    const stored = await repository.findById(created.id);
+    expect(stored?.status).toBe("open");
+    expect(stored?.messages).toHaveLength(2);
+    expect(stored?.messages.find((message) => message.id === result.reply.id)?.content).toContain("运输中");
   });
 });
