@@ -39,6 +39,8 @@ pnpm build
 
 ## Conversation Internal API
 
+Workbench search matches customer IDs or any historical message; the summary still displays the latest message. Execution history is chronological, 50 records per page; an empty out-of-range workbench page returns to the first page. Apply `pnpm exec prisma migrate deploy` to install the composite pagination indexes. Substring message search may still scan content; these indexes support ordering and customer/status scoping, not full-text search.
+
 - POST /api/internal/conversations creates a conversation from customerId and initialMessage.
 - GET /api/internal/conversations lists conversations with their latest message, 20 at a time. Pass `?page=2` for later pages; the response includes `{ data, page, pageSize, total }`.
 - GET /api/internal/conversations/:conversationId returns the conversation and ordered message history.

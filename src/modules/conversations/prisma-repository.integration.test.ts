@@ -122,6 +122,17 @@ describe("PrismaConversationRepository", () => {
     ).resolves.toBeNull();
   });
 
+  it("isolates customer rows and totals before pagination", async () => {
+    await client.conversation.createMany({ data: Array.from({ length: 45 }, (_, i) => ({
+      id: `scoped-${String(i).padStart(3, "0")}`, customerId: i < 21 ? "owner" : "other", status: "open", updatedAt: new Date(0),
+    })) });
+    const page = await repository.list({ customerId: "owner", query: "", status: "", page: 2, pageSize: 20 });
+    expect(page.total).toBe(21);
+    expect(page.conversations.map((item) => item.id)).toEqual(["scoped-000"]);
+    const empty = await repository.list({ customerId: "missing", query: "", status: "", page: 2, pageSize: 20 });
+    expect(empty).toMatchObject({ conversations: [], total: 0, page: 1 });
+  });
+
   it("persists the runtime order-query reply and final state in SQLite", async () => {
     const service = new ConversationService(repository);
     const created = await service.create({ customerId: "customer-1", initialMessage: "我的订单什么时候到？" });

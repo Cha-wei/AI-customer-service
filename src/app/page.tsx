@@ -22,7 +22,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
     <section className="panel" aria-labelledby="conversation-list-title">
       <div className="panel-heading"><div><h2 id="conversation-list-title">全部会话</h2><p>按最近更新时间排序</p></div></div>
       <form className="filters" method="get">
-        <label><span>搜索</span><input defaultValue={filters.query} name="query" placeholder="客户 ID 或消息内容" type="search" /></label>
+        <label><span>搜索</span><input defaultValue={filters.query} name="query" placeholder="客户 ID 或全部历史消息" type="search" /></label>
         <label><span>状态</span><select defaultValue={status} name="status"><option value="">全部状态</option>{CONVERSATION_STATUSES.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label>
         <button type="submit">筛选</button>
         {(query || status) && <Link className="clear-link" href="/">清除</Link>}

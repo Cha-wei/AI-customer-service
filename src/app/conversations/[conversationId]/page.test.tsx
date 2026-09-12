@@ -57,12 +57,18 @@ describe("conversation detail page", () => {
   it("reads and links execution history pages", async () => {
     const createdAt = new Date("2026-09-12T08:00:00Z");
     get.mockResolvedValue({ id: "conversation-1", customerId: "customer-1", status: "open", messages: [], createdAt, updatedAt: createdAt });
-    listExecutions.mockResolvedValue({ executions: [], nextOffset: 100 });
+    listExecutions.mockResolvedValue({ executions: [{ id: "e", status: "completed", createdAt, finishedAt: null, toolResult: null, errorCode: null }], nextOffset: 100 });
 
     render(await ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }), searchParams: Promise.resolve({ executionPage: "2" }) }));
 
     expect(listExecutions).toHaveBeenCalledWith("conversation-1", 50);
     expect(screen.getByRole("link", { name: "上一页" })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=1");
     expect(screen.getByRole("link", { name: "下一页" })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=3");
+  });
+
+  it("redirects an empty out-of-range page to the first page", async () => {
+    get.mockResolvedValue({ id: "conversation-1" });
+    listExecutions.mockResolvedValue({ executions: [], nextOffset: null });
+    await expect(ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }), searchParams: Promise.resolve({ executionPage: "99" }) })).rejects.toMatchObject({ digest: expect.stringContaining("/conversations/conversation-1") });
   });
 });

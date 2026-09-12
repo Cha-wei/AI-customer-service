@@ -18,6 +18,9 @@ model Conversation {
 
   @@index([customerId])
   @@index([updatedAt])
+  @@index([updatedAt, id])
+  @@index([status, updatedAt, id])
+  @@index([customerId, updatedAt, id])
 }
 
 model RuntimeExecution {
@@ -32,6 +35,7 @@ model RuntimeExecution {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([status, createdAt])
+  @@index([conversationId, createdAt, id])
 }
 
 model Message {
