@@ -12,7 +12,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "test": "cross-env DATABASE_URL=file:./test.db vitest run",
-    "test:watch": "cross-env DATABASE_URL=file:./test.db vitest"
+    "test:watch": "cross-env DATABASE_URL=file:./test.db vitest",
+    "test:live:orders": "node scripts/verify-deepseek-orders.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",

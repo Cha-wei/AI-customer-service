@@ -106,6 +106,17 @@ An optional live smoke test sends one synthetic question using local `.env`:
 in PowerShell, set `$env:RUN_DEEPSEEK_LIVE='1'` and run `pnpm test`.
 Remove that environment variable afterwards; the live test is skipped by default.
 
+## Live order acceptance
+
+The live test commands require Node.js 22 or newer.
+After configuring DeepSeek credentials in local `.env`, run `pnpm build` then
+`pnpm test:live:orders`. This opt-in test starts the production server on a loopback
+port with a temporary SQLite database, applies migrations, and exercises the real
+HTTP API from conversation creation through DeepSeek intent classification, mock
+order lookup, reply/history persistence and duplicate-run rejection. It sends one
+synthetic question to DeepSeek and may incur API usage. It stops its own server
+and removes its temporary database afterwards; the normal database is untouched.
+
 ## Project layout
 
 - `src/app`: Next.js UI and Internal API routes
