@@ -3,7 +3,6 @@ import {
   isMessageRole,
   type Conversation,
   type ConversationStatus,
-  type ConversationSummary,
   type Message,
   type MessageRole,
 } from "./domain";
@@ -12,10 +11,11 @@ import {
   ConversationValidationError,
   InvalidConversationTransitionError,
 } from "./errors";
-import type { ConversationRepository } from "./repository";
+import type { ConversationPage, ConversationRepository } from "./repository";
 
 const MAX_CUSTOMER_ID_LENGTH = 128;
 const MAX_MESSAGE_LENGTH = 10_000;
+const CONVERSATION_PAGE_SIZE = 20;
 
 export interface CreateConversationInput {
   customerId: string;
@@ -84,8 +84,16 @@ export class ConversationService {
     return conversation;
   }
 
-  list(): Promise<ConversationSummary[]> {
-    return this.repository.list();
+  list(input: { customerId?: string; query?: string; status?: ConversationStatus | ""; page?: number } = {}): Promise<ConversationPage> {
+    const requestedPage = input.page ?? 1;
+    const page = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    return this.repository.list({
+      ...(input.customerId ? { customerId: input.customerId } : {}),
+      query: input.query?.trim() ?? "",
+      status: input.status ?? "",
+      page,
+      pageSize: CONVERSATION_PAGE_SIZE,
+    });
   }
 
   async transition(

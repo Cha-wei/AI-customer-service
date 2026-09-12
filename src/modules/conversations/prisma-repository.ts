@@ -13,8 +13,10 @@ import {
 } from "./domain";
 import type {
   AppendMessageRecord,
+  ConversationPage,
   ConversationRepository,
   CreateConversationRecord,
+  ListConversationsQuery,
 } from "./repository";
 
 type ConversationWithMessages = Prisma.ConversationGetPayload<{
@@ -89,18 +91,35 @@ export class PrismaConversationRepository implements ConversationRepository {
     return record ? mapConversation(record) : null;
   }
 
-  async list(): Promise<ConversationSummary[]> {
-    const records = await this.client.conversation.findMany({
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
-      include: {
-        messages: {
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 1,
+  async list(input: ListConversationsQuery): Promise<ConversationPage> {
+    const where: Prisma.ConversationWhereInput = {
+      ...(input.customerId ? { customerId: input.customerId } : {}),
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.query ? {
+        OR: [
+          { customerId: { contains: input.query } },
+          { messages: { some: { content: { contains: input.query } } } },
+        ],
+      } : {}),
+    };
+    return this.client.$transaction(async (tx) => {
+      const total = await tx.conversation.count({ where });
+      const totalPages = Math.max(1, Math.ceil(total / input.pageSize));
+      const page = Math.min(input.page, totalPages);
+      const records = await tx.conversation.findMany({
+        where,
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * input.pageSize,
+        take: input.pageSize,
+        include: {
+          messages: {
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 1,
+          },
         },
-      },
+      });
+      return { conversations: records.map(mapSummary), page, pageSize: input.pageSize, total };
     });
-
-    return records.map(mapSummary);
   }
 
   async updateStatus(

@@ -21,11 +21,26 @@ export interface AppendMessageRecord {
   content: string;
 }
 
+export interface ListConversationsQuery {
+  customerId?: string;
+  query: string;
+  status: ConversationStatus | "";
+  page: number;
+  pageSize: number;
+}
+
+export interface ConversationPage {
+  conversations: ConversationSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface ConversationRepository {
   create(input: CreateConversationRecord): Promise<Conversation>;
   appendMessage(input: AppendMessageRecord): Promise<Message | null>;
   findById(conversationId: string): Promise<Conversation | null>;
-  list(): Promise<ConversationSummary[]>;
+  list(query: ListConversationsQuery): Promise<ConversationPage>;
   updateStatus(
     conversationId: string,
     status: ConversationStatus,

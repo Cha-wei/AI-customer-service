@@ -10,11 +10,14 @@ export const dynamic = "force-dynamic";
 const statusLabels: Record<string, string> = { open: "待处理", processing: "处理中", waiting_approval: "待审批", human_handoff: "人工接管", resolved: "已解决" };
 const executionLabels: Record<string, string> = { running: "执行中", completed: "已完成", failed: "失败" };
 
-export default async function ConversationDetail({ params, searchParams }: { params: Promise<{ conversationId: string }>; searchParams?: Promise<{ notice?: string }> }) {
+export default async function ConversationDetail({ params, searchParams }: { params: Promise<{ conversationId: string }>; searchParams?: Promise<{ notice?: string; executionPage?: string }> }) {
   await requireAdminSession();
   const { conversationId } = await params;
-  const { conversation, page } = await loadConversation(conversationId);
-  const notice = (await searchParams)?.notice;
+  const filters = await searchParams;
+  const requestedExecutionPage = /^\d+$/.test(filters?.executionPage ?? "") ? Number(filters?.executionPage) : 1;
+  const executionPage = Number.isSafeInteger(requestedExecutionPage) && requestedExecutionPage > 0 && requestedExecutionPage <= 20_001 ? requestedExecutionPage : 1;
+  const { conversation, page } = await loadConversation(conversationId, executionPage);
+  const notice = filters?.notice;
 
   return <main className="shell">
     <Link className="back-link" href="/">← 返回会话列表</Link>
@@ -32,14 +35,19 @@ export default async function ConversationDetail({ params, searchParams }: { par
       </section>
       <section className="panel" aria-labelledby="executions-title"><div className="panel-heading"><div><h2 id="executions-title">执行记录</h2><p>最近 {page.executions.length} 条</p></div></div>
         {page.executions.length === 0 ? <Empty text="暂无执行记录" /> : <div className="execution-list">{page.executions.map((execution) => <article className="execution" key={execution.id}><div className="execution-heading"><span className={`status execution-${execution.status}`}>{executionLabels[execution.status]}</span><time dateTime={execution.createdAt.toISOString()}>{formatDate(execution.createdAt)}</time></div><dl><div><dt>工具结果</dt><dd>{formatResult(execution.toolResult)}</dd></div><div><dt>失败原因</dt><dd>{execution.errorCode ?? "—"}</dd></div><div><dt>完成时间</dt><dd>{execution.finishedAt ? formatDate(execution.finishedAt) : "—"}</dd></div></dl></article>)}</div>}
+        <nav className="panel-heading" aria-label="执行记录分页">
+          {executionPage > 1 ? <Link href={`/conversations/${conversation.id}?executionPage=${executionPage - 1}`}>上一页</Link> : <span />}
+          <span>第 {executionPage} 页</span>
+          {page.nextOffset !== null ? <Link href={`/conversations/${conversation.id}?executionPage=${executionPage + 1}`}>下一页</Link> : <span />}
+        </nav>
       </section>
     </div>
   </main>;
 }
 
-async function loadConversation(conversationId: string) {
+async function loadConversation(conversationId: string, executionPage: number) {
   try {
-    const [conversation, page] = await Promise.all([getConversationService().get(conversationId), new PrismaExecutionReader(prisma).list(conversationId, 0)]);
+    const [conversation, page] = await Promise.all([getConversationService().get(conversationId), new PrismaExecutionReader(prisma).list(conversationId, (executionPage - 1) * 50)]);
     return { conversation, page };
   } catch (error) { if (error instanceof ConversationNotFoundError) notFound(); throw error; }
 }

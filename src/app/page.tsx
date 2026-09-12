@@ -10,22 +10,15 @@ const statusLabels: Record<string, string> = { open: "待处理", processing: "�
 export default async function Home({ searchParams }: { searchParams: Promise<{ query?: string; status?: string; page?: string }> }) {
   await requireAdminSession();
   const filters = await searchParams;
-  const query = filters.query?.trim().toLocaleLowerCase("zh-CN") ?? "";
-  const status = isConversationStatus(filters.status ?? "") ? filters.status : "";
-  const conversations = await getConversationService().list();
-  const visibleConversations = conversations.filter((conversation) => {
-    const matchesQuery = !query
-      || conversation.customerId.toLocaleLowerCase("zh-CN").includes(query)
-      || conversation.latestMessage?.content.toLocaleLowerCase("zh-CN").includes(query);
-    return matchesQuery && (!status || conversation.status === status);
-  });
-  const totalPages = Math.max(1, Math.ceil(visibleConversations.length / 20));
+  const query = filters.query?.trim() ?? "";
+  const status = isConversationStatus(filters.status ?? "") ? filters.status as (typeof CONVERSATION_STATUSES)[number] : "";
   const requestedPage = /^\d+$/.test(filters.page ?? "") ? Number(filters.page) : 1;
-  const currentPage = Math.max(1, Math.min(totalPages, Number.isSafeInteger(requestedPage) ? requestedPage : 1));
-  const pageItems = visibleConversations.slice((currentPage - 1) * 20, currentPage * 20);
+  const result = await getConversationService().list({ query, status, page: requestedPage });
+  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const currentPage = result.page;
   const pageHref = (page: number) => `/?${new URLSearchParams({ query: filters.query ?? "", status: status ?? "", page: String(page) })}`;
   return <main className="shell">
-    <header className="topbar"><div><p className="eyebrow">客服工作台</p><h1>会话管理</h1></div><div className="topbar-actions"><p className="topbar-note">{visibleConversations.length} 个会话</p><LogoutButton /></div></header>
+    <header className="topbar"><div><p className="eyebrow">客服工作台</p><h1>会话管理</h1></div><div className="topbar-actions"><p className="topbar-note">{result.total} 个会话</p><LogoutButton /></div></header>
     <section className="panel" aria-labelledby="conversation-list-title">
       <div className="panel-heading"><div><h2 id="conversation-list-title">全部会话</h2><p>按最近更新时间排序</p></div></div>
       <form className="filters" method="get">
@@ -34,8 +27,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ q
         <button type="submit">筛选</button>
         {(query || status) && <Link className="clear-link" href="/">清除</Link>}
       </form>
-      {visibleConversations.length === 0 ? <div className="state-card"><span className="state-icon" aria-hidden="true">◎</span><h3>{query || status ? "没有匹配的会话" : "暂无会话"}</h3><p>{query || status ? "请调整搜索条件或状态筛选。" : "客户发起咨询后，会话会显示在这里。"}</p></div> :
-        <div className="conversation-list">{pageItems.map((conversation) =>
+      {result.conversations.length === 0 ? <div className="state-card"><span className="state-icon" aria-hidden="true">◎</span><h3>{query || status ? "没有匹配的会话" : "暂无会话"}</h3><p>{query || status ? "请调整搜索条件或状态筛选。" : "客户发起咨询后，会话会显示在这里。"}</p></div> :
+        <div className="conversation-list">{result.conversations.map((conversation) =>
           <Link className="conversation-row" href={`/conversations/${conversation.id}`} key={conversation.id}>
             <span className="avatar" aria-hidden="true">{conversation.customerId.slice(0, 2).toUpperCase()}</span>
             <span className="conversation-main"><span className="conversation-meta"><strong>{conversation.customerId}</strong><span className={`status status-${conversation.status}`}>{statusLabels[conversation.status] ?? conversation.status}</span></span><span className="latest-message">{conversation.latestMessage?.content ?? "暂无消息"}</span></span>

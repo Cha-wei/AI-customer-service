@@ -1,4 +1,4 @@
-import type { Conversation, ConversationSummary, Message } from "./domain";
+import type { Conversation, Message } from "./domain";
 import {
   ConversationValidationError,
   InvalidConversationTransitionError,
@@ -26,7 +26,7 @@ function repositoryStub(
     create: vi.fn(async () => conversation()),
     appendMessage: vi.fn(async () => null),
     findById: vi.fn(async () => conversation()),
-    list: vi.fn(async (): Promise<ConversationSummary[]> => []),
+    list: vi.fn(async () => ({ conversations: [], page: 1, pageSize: 20, total: 0 })),
     updateStatus: vi.fn(async () => conversation("processing")),
     ...overrides,
   };
@@ -96,5 +96,14 @@ describe("ConversationService", () => {
         content: "Your order is in transit.",
       }),
     ).resolves.toEqual(savedMessage);
+  });
+
+  it("normalizes list filters and delegates database pagination", async () => {
+    const list = vi.fn(async () => ({ conversations: [], page: 1, pageSize: 20, total: 0 }));
+    const service = new ConversationService(repositoryStub({ list }));
+
+    await service.list({ customerId: "customer-1", query: "  order  ", status: "open", page: -2 });
+
+    expect(list).toHaveBeenCalledWith({ customerId: "customer-1", query: "order", status: "open", page: 1, pageSize: 20 });
   });
 });

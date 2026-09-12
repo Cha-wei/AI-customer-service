@@ -4,7 +4,7 @@
 
 Configure `ADMIN_UI_PASSWORD` (12+ characters) and `ADMIN_UI_SESSION_SECRET` (32+ characters) in ignored local `.env`. Visit `/login`; production requires HTTPS for the Secure session cookie. Internal API Bearer credentials remain separate.
 
-The list shows 20 conversations per page and preserves search/status filters. MVP pagination currently slices the filtered summaries on the server; it does not reduce database reads. Detail pages allow open conversations to be handed off or resolved, and handed-off conversations to be resolved. Running executions block manual changes. Successful changes append a system message in the same transaction.
+The list queries 20 conversations per page in the database and preserves search/status filters. Detail pages paginate execution records in groups of 50, allow open conversations to be handed off or resolved, and allow handed-off conversations to be resolved. Running executions block manual changes. Successful changes append a system message in the same transaction.
 
 Login has a shared single-process budget of five attempts per 15 minutes, reset on success. Restarting clears the budget; multiple instances need a shared limiter before deployment. All administrators share the cooldown. Login, logout and status POST requests require a matching Origin header; configure a reverse proxy to preserve the public origin.
 
@@ -40,7 +40,7 @@ pnpm build
 ## Conversation Internal API
 
 - POST /api/internal/conversations creates a conversation from customerId and initialMessage.
-- GET /api/internal/conversations lists conversations with their latest message.
+- GET /api/internal/conversations lists conversations with their latest message, 20 at a time. Pass `?page=2` for later pages; the response includes `{ data, page, pageSize, total }`.
 - GET /api/internal/conversations/:conversationId returns the conversation and ordered message history.
 - POST /api/internal/conversations/:conversationId/messages appends a customer, agent, or system message.
 

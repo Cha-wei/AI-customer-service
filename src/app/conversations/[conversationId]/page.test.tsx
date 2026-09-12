@@ -53,4 +53,16 @@ describe("conversation detail page", () => {
     expect(screen.getByText("暂无消息记录")).toBeInTheDocument();
     expect(screen.getByText("暂无执行记录")).toBeInTheDocument();
   });
+
+  it("reads and links execution history pages", async () => {
+    const createdAt = new Date("2026-09-12T08:00:00Z");
+    get.mockResolvedValue({ id: "conversation-1", customerId: "customer-1", status: "open", messages: [], createdAt, updatedAt: createdAt });
+    listExecutions.mockResolvedValue({ executions: [], nextOffset: 100 });
+
+    render(await ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }), searchParams: Promise.resolve({ executionPage: "2" }) }));
+
+    expect(listExecutions).toHaveBeenCalledWith("conversation-1", 50);
+    expect(screen.getByRole("link", { name: "上一页" })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=1");
+    expect(screen.getByRole("link", { name: "下一页" })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=3");
+  });
 });

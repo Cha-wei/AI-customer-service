@@ -10,15 +10,17 @@ vi.mock("@/modules/conversations/composition-root", () => ({
 describe("conversation management page", () => {
   beforeEach(() => list.mockReset());
 
+  const page = (conversations: unknown[], overrides = {}) => ({ conversations, page: 1, pageSize: 20, total: conversations.length, ...overrides });
+
   it("shows the required conversation summary", async () => {
-    list.mockResolvedValue([{
+    list.mockResolvedValue(page([{
       id: "conversation-1",
       customerId: "customer-1",
       status: "open",
       latestMessage: { content: "我的订单什么时候到？" },
       createdAt: new Date("2026-09-12T08:00:00Z"),
       updatedAt: new Date("2026-09-12T08:30:00Z"),
-    }]);
+    }]));
     render(await Home({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole("heading", { name: "会话管理" })).toBeInTheDocument();
     expect(screen.getByText("customer-1")).toBeInTheDocument();
@@ -28,14 +30,14 @@ describe("conversation management page", () => {
   });
 
   it("shows an empty state", async () => {
-    list.mockResolvedValue([]);
+    list.mockResolvedValue(page([]));
     render(await Home({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText("暂无会话")).toBeInTheDocument();
   });
 
   it("paginates matching conversations and preserves filters", async () => {
     const date = new Date();
-    list.mockResolvedValue(Array.from({ length: 25 }, (_, i) => ({ id: String(i), customerId: `customer-${i}`, status: "open", latestMessage: null, updatedAt: date })));
+    list.mockResolvedValue(page(Array.from({ length: 5 }, (_, i) => ({ id: String(i + 20), customerId: `customer-${i + 20}`, status: "open", latestMessage: null, updatedAt: date })), { page: 2, total: 25 }));
     render(await Home({ searchParams: Promise.resolve({ query: "customer", status: "open", page: "2" }) }));
     expect(screen.queryByText("customer-0")).not.toBeInTheDocument();
     expect(screen.getByText("customer-24")).toBeInTheDocument();
@@ -45,13 +47,12 @@ describe("conversation management page", () => {
 
   it("filters by customer, message and status", async () => {
     const createdAt = new Date("2026-09-12T08:00:00Z");
-    list.mockResolvedValue([
+    list.mockResolvedValue(page([
       { id: "1", customerId: "customer-1", status: "open", latestMessage: { content: "订单查询" }, createdAt, updatedAt: createdAt },
-      { id: "2", customerId: "customer-2", status: "resolved", latestMessage: { content: "产品问题" }, createdAt, updatedAt: createdAt },
-    ]);
+    ]));
     render(await Home({ searchParams: Promise.resolve({ query: "订单", status: "open" }) }));
     expect(screen.getByText("customer-1")).toBeInTheDocument();
-    expect(screen.queryByText("customer-2")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "清除" })).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith({ query: "订单", status: "open", page: 1 });
   });
 });

@@ -88,10 +88,28 @@ describe("PrismaConversationRepository", () => {
       content: "Latest message",
     });
 
-    const conversations = await repository.list();
+    const page = await repository.list({ query: "", status: "", page: 1, pageSize: 20 });
 
-    expect(conversations).toHaveLength(1);
-    expect(conversations[0].latestMessage?.content).toBe("Latest message");
+    expect(page.conversations).toHaveLength(1);
+    expect(page.conversations[0].latestMessage?.content).toBe("Latest message");
+  });
+
+  it("filters, counts and clamps conversation pages in SQLite", async () => {
+    for (let i = 0; i < 22; i++) {
+      await repository.create({
+        customerId: i === 21 ? "unrelated-account" : `customer-${i}`,
+        status: i % 2 === 0 ? "open" : "resolved",
+        initialMessage: { role: "customer", content: i === 20 ? "special order" : "hello" },
+      });
+    }
+
+    const second = await repository.list({ query: "customer", status: "", page: 2, pageSize: 20 });
+    expect(second).toMatchObject({ page: 2, pageSize: 20, total: 21 });
+    expect(second.conversations).toHaveLength(1);
+
+    const filtered = await repository.list({ query: "special", status: "open", page: 99, pageSize: 20 });
+    expect(filtered).toMatchObject({ page: 1, total: 1 });
+    expect(filtered.conversations[0].customerId).toBe("customer-20");
   });
 
   it("returns null when appending to a missing conversation", async () => {
