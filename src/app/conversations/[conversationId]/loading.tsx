@@ -1,0 +1,1 @@
+export default function DetailLoading() { return <main className="shell" aria-busy="true" aria-label="正在加载会话详情"><div className="skeleton skeleton-title" /><div className="detail-grid"><div className="panel skeleton-panel" /><div className="panel skeleton-panel" /></div></main>; }
