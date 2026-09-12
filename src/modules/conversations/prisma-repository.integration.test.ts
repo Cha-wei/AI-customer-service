@@ -6,6 +6,7 @@ import { CustomerServiceRuntime, RuleIntentProvider } from "../agent-runtime";
 import { OrderQueryTool } from "../tools";
 import { MockCustomerContextProvider } from "../customer-context";
 import { PrismaExecutionStore } from "../agent-runtime/prisma-execution-store";
+import { PrismaExecutionReader } from "../agent-runtime/prisma-execution-reader";
 
 describe("PrismaConversationRepository", () => {
   const client = new PrismaClient();
@@ -127,5 +128,26 @@ describe("PrismaConversationRepository", () => {
     expect(await client.message.count()).toBe(1);
     await store.fail(id);
     expect(await client.runtimeExecution.findUnique({ where: { id } })).toMatchObject({ status: "failed" });
+  });
+
+  it("reads execution pages scoped to a conversation with decoded results", async () => {
+    const service = new ConversationService(repository);
+    const first = await service.create({ customerId: "customer-1", initialMessage: "查订单" });
+    const second = await service.create({ customerId: "customer-2", initialMessage: "查订单" });
+    await client.runtimeExecution.createMany({ data: Array.from({ length: 51 }, (_, i) => ({
+      id: `execution-${String(i).padStart(3, "0")}`, conversationId: first.id, messageId: `source-${i}`,
+      status: "completed", createdAt: new Date(0), toolResult: JSON.stringify({ ok: true }),
+    })) });
+    const reader = new PrismaExecutionReader(client);
+    const page = await reader.list(first.id);
+    expect(page.executions).toHaveLength(50);
+    expect(page.nextOffset).toBe(50);
+    expect(page.executions[0].toolResult).toEqual({ ok: true });
+    const last = await reader.list(first.id, page.nextOffset!);
+    expect(last.executions.map((record) => record.id)).toEqual(["execution-050"]);
+    expect(last.nextOffset).toBeNull();
+    expect(await reader.list(second.id)).toEqual({ executions: [], nextOffset: null });
+    await expect(reader.list("missing")).rejects.toThrow("was not found");
+    await expect(reader.list(first.id, -1)).rejects.toThrow("Invalid");
   });
 });

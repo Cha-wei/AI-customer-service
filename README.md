@@ -47,6 +47,14 @@ using the conversation's customer ID, persists an agent reply, and returns
 missing customers, failed tools, and unsupported requests enter `human_handoff`.
 Repeated runs without a new customer message return 409.
 
+Read execution history with `GET /api/internal/conversations/:conversationId/executions`.
+The response is `{ executions, nextOffset }`: up to 50 records in chronological
+order, including status, decoded tool result, failure code, and timestamps.
+Pass `?offset=<nextOffset>` for the next page; `null` marks the last page.
+Existing conversations without executions return an empty list; missing conversations
+return 404. Responses are not cached. This is a trusted internal diagnostic endpoint
+and returns customer/order data contained in tool results.
+
 The default `RuleIntentProvider` is a deterministic Chinese/English keyword demo,
 not an LLM. `IntentProvider`, `AgentRuntime`, and the typed `RuntimeTools` registry
 are injectable; only the read-only order tool is registered. No model key is required.
