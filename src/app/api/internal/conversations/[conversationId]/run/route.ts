@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAgentRuntime } from "@/modules/agent-runtime/composition-root";
 import { RuntimeConflictError } from "@/modules/agent-runtime";
+import { authenticate, assertConversation } from "@/modules/internal-auth";
 import { conversationErrorResponse } from "../../http";
 
 export async function POST(
@@ -8,7 +9,9 @@ export async function POST(
   context: { params: Promise<{ conversationId: string }> },
 ) {
   try {
+    const principal = authenticate(_request);
     const { conversationId } = await context.params;
+    await assertConversation(principal, conversationId);
     return NextResponse.json(await getAgentRuntime().run(conversationId));
   } catch (error) {
     if (error instanceof RuntimeConflictError) {

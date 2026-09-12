@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getConversationService } from "@/modules/conversations/composition-root";
 import type { MessageRole } from "@/modules/conversations";
+import { authenticate, assertConversation, AccessError } from "@/modules/internal-auth";
 
 import { conversationErrorResponse, readJsonObject } from "../../http";
 
@@ -11,10 +12,13 @@ interface RouteContext {
 
 export async function POST(request: Request, context: RouteContext) {
   try {
+    const principal = authenticate(request);
     const [{ conversationId }, body] = await Promise.all([
       context.params,
       readJsonObject(request),
     ]);
+    await assertConversation(principal, conversationId);
+    if (principal.role === "customer" && body.role !== "customer") throw new AccessError(403, "forbidden");
     const message = await getConversationService().appendMessage({
       conversationId,
       role: body.role as MessageRole,

@@ -1,10 +1,12 @@
 import { POST } from "./route";
+import { configureTestAuth, authHeaders } from "@/test/internal-auth";
+configureTestAuth();
 
 describe("POST /api/internal/conversations", () => {
   it("returns a structured validation error for invalid JSON", async () => {
     const request = new Request("http://localhost/api/internal/conversations", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...authHeaders },
       body: "{",
     });
 

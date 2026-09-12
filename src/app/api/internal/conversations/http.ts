@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accessErrorResponse } from "@/modules/internal-auth";
 
 import {
   ConversationNotFoundError,
@@ -27,6 +28,8 @@ export async function readJsonObject(
 export function conversationErrorResponse(
   error: unknown,
 ): NextResponse | undefined {
+  const denied = accessErrorResponse(error);
+  if (denied) return denied;
   if (error instanceof ConversationValidationError) {
     return NextResponse.json(
       { error: { code: "validation_error", message: error.message } },

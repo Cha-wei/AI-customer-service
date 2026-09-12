@@ -1,4 +1,6 @@
 import { GET } from "./route";
+import { configureTestAuth, authHeaders } from "@/test/internal-auth";
+configureTestAuth();
 import { ConversationNotFoundError } from "@/modules/conversations";
 
 const { list } = vi.hoisted(() => ({ list: vi.fn() }));
@@ -9,7 +11,7 @@ vi.mock("@/modules/agent-runtime/prisma-execution-reader", () => ({
 
 describe("execution query API", () => {
   beforeEach(() => { list.mockReset(); });
-  const call = (query = "") => GET(new Request(`http://localhost/api/internal/conversations/c/executions${query}`), { params: Promise.resolve({ conversationId: "c" }) });
+  const call = (query = "") => GET(new Request(`http://localhost/api/internal/conversations/c/executions${query}`, { headers: authHeaders }), { params: Promise.resolve({ conversationId: "c" }) });
   it("returns scoped records without caching", async () => {
     list.mockResolvedValue({ executions: [], nextOffset: null });
     const response = await call("?offset=50");

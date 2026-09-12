@@ -1,13 +1,15 @@
 import { RuntimeConflictError } from "@/modules/agent-runtime";
 import { ConversationNotFoundError } from "@/modules/conversations";
 import { POST } from "./route";
+import { configureTestAuth, authHeaders } from "@/test/internal-auth";
+configureTestAuth();
 
 const { run } = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("@/modules/agent-runtime/composition-root", () => ({ getAgentRuntime: () => ({ run }) }));
 
 describe("POST conversation run", () => {
   beforeEach(() => { run.mockReset(); });
-  const call = () => POST(new Request("http://localhost/api/internal/conversations/c/run", { method: "POST" }), { params: Promise.resolve({ conversationId: "c" }) });
+  const call = () => POST(new Request("http://localhost/api/internal/conversations/c/run", { method: "POST", headers: authHeaders }), { params: Promise.resolve({ conversationId: "c" }) });
   it("invokes runtime using the route conversation id", async () => {
     run.mockResolvedValue({ status: "open" });
     expect((await call()).status).toBe(200);

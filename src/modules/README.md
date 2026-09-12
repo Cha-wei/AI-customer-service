@@ -17,5 +17,7 @@ Each replaceable capability should expose a small interface. Mock and real adapt
 
 Current replaceable boundaries:
 
+- `internal-auth` authenticates internal API callers and enforces customer ownership at HTTP boundaries. The MVP binds opaque bearer credentials to customer/operator identities using local environment configuration.
+
 - `customer-context` exposes `CustomerContextProvider`; the MVP implementation serves mock customer and order data.
 - `tools` exposes a uniform `Tool` call/result contract; `OrderQueryTool` reads orders and logistics through `CustomerContextProvider`.

@@ -117,6 +117,27 @@ order lookup, reply/history persistence and duplicate-run rejection. It sends on
 synthetic question to DeepSeek and may incur API usage. It stops its own server
 and removes its temporary database afterwards; the normal database is untouched.
 
+## Internal API authentication
+
+All `/api/internal/*` routes require `Authorization: Bearer <token>`. Configure
+`INTERNAL_API_TOKENS` in local `.env` as a JSON array of credentials, for example:
+
+```dotenv
+INTERNAL_API_TOKENS='[{"token":"REPLACE_WITH_RANDOM_CUSTOMER_TOKEN","role":"customer","customerId":"customer-1"},{"token":"REPLACE_WITH_RANDOM_OPERATOR_TOKEN","role":"operator"}]'
+```
+
+Replace each example token with a distinct cryptographically random value of at
+least 32 characters. Missing/invalid configuration returns 503, missing/invalid
+credentials return 401. Customer credentials can create and list only their own
+conversations, read/run only owned conversations and append only customer messages.
+Foreign conversation IDs return 404. Operator credentials can access all customers
+and call the recovery endpoint; customer recovery calls return 403.
+This MVP uses server-managed credentials, not end-user login or a full IAM system.
+Keep operator tokens server-side, use HTTPS outside loopback, and rotate tokens by
+replacing local configuration and restarting. `/api/health` stays unauthenticated.
+The live acceptance script generates temporary customer credentials in memory and
+checks anonymous access, impersonation, foreign records and forged message roles.
+
 ## Project layout
 
 - `src/app`: Next.js UI and Internal API routes

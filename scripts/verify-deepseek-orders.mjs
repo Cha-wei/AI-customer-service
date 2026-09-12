@@ -8,6 +8,7 @@ import { loadEnvFile } from "node:process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
+import { randomBytes } from "node:crypto";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -22,7 +23,15 @@ async function run() {
   }
   directory = mkdtempSync(join(tmpdir(), "customer-service-acceptance-"));
   const databaseUrl = "file:" + join(directory, "acceptance.db").replaceAll("\\", "/");
-  const env = { ...process.env, DATABASE_URL: databaseUrl, INTENT_PROVIDER: "deepseek", DEEPSEEK_TIMEOUT_MS: "30000", NEXT_TELEMETRY_DISABLED: "1" };
+  const token = randomBytes(32).toString("hex");
+  const otherToken = randomBytes(32).toString("hex");
+  const env = { ...process.env, DATABASE_URL: databaseUrl, INTENT_PROVIDER: "deepseek", DEEPSEEK_TIMEOUT_MS: "30000", NEXT_TELEMETRY_DISABLED: "1",
+    INTERNAL_API_TOKENS: JSON.stringify([
+      { token, role: "customer", customerId: "customer-1" },
+      { token: otherToken, role: "customer", customerId: "customer-2" },
+    ]),
+  };
+  const apiFetch = (url, options = {}) => fetch(url, { ...options, headers: { Authorization: `Bearer ${token}`, ...options.headers } });
   const client = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   try { await client.$executeRawUnsafe("PRAGMA user_version = 0"); }
   finally { await client.$disconnect(); }
@@ -50,7 +59,12 @@ async function run() {
   }
   assert(ready, "Built application did not start. Run pnpm build first.");
 
-  const created = await fetch(base + "/api/internal/conversations", {
+  assert.equal((await fetch(base + "/api/internal/conversations", { signal: AbortSignal.timeout(5000) })).status, 401);
+  const impersonation = await apiFetch(base + "/api/internal/conversations", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerId: "customer-2", initialMessage: "test" }), signal: AbortSignal.timeout(5000),
+  });
+  assert.equal(impersonation.status, 403);
+  const created = await apiFetch(base + "/api/internal/conversations", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ customerId: "customer-1", initialMessage: "请查询我的订单物流状态。" }),
     signal: AbortSignal.timeout(5000),
@@ -58,7 +72,15 @@ async function run() {
   assert.equal(created.status, 201, "Conversation creation failed.");
   const { data: conversation } = await created.json();
   const path = base + "/api/internal/conversations/" + encodeURIComponent(conversation.id);
-  const response = await fetch(path + "/run", { method: "POST", signal: AbortSignal.timeout(40_000) });
+  for (const [suffix, method] of [["", "GET"], ["/executions", "GET"], ["/run", "POST"], ["/messages", "POST"]]) {
+    const denied = await apiFetch(path + suffix, { method, headers: { Authorization: `Bearer ${otherToken}`, "Content-Type": "application/json" }, ...(method === "POST" ? { body: JSON.stringify({ role: "customer", content: "test" }) } : {}), signal: AbortSignal.timeout(5000) });
+    assert.equal(denied.status, 404, "Cross-customer access was not denied.");
+  }
+  assert.equal((await apiFetch(path + "/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "agent", content: "fake reply" }), signal: AbortSignal.timeout(5000) })).status, 403);
+  assert.equal((await apiFetch(base + "/api/internal/runtime/recover", { method: "POST", signal: AbortSignal.timeout(5000) })).status, 403);
+  const otherList = await apiFetch(base + "/api/internal/conversations", { headers: { Authorization: `Bearer ${otherToken}` }, signal: AbortSignal.timeout(5000) });
+  assert.equal((await otherList.json()).data.length, 0);
+  const response = await apiFetch(path + "/run", { method: "POST", signal: AbortSignal.timeout(40_000) });
   assert.equal(response.status, 200, "Runtime request failed.");
   const result = await response.json();
   assert.equal(result.status, "open", "Runtime did not complete the order query.");
@@ -66,20 +88,20 @@ async function run() {
   assert.equal(result.toolResult.data.customer.id, "customer-1");
   assert(result.reply.content.includes("运输中"), "Reply does not contain mock logistics status.");
 
-  const loadedResponse = await fetch(path, { signal: AbortSignal.timeout(5000) });
+  const loadedResponse = await apiFetch(path, { signal: AbortSignal.timeout(5000) });
   assert.equal(loadedResponse.status, 200);
   const loaded = await loadedResponse.json();
   assert.equal(loaded.data.messages.length, 2);
   assert.equal(loaded.data.messages.at(-1).content, result.reply.content);
-  const historyResponse = await fetch(path + "/executions", { signal: AbortSignal.timeout(5000) });
+  const historyResponse = await apiFetch(path + "/executions", { signal: AbortSignal.timeout(5000) });
   assert.equal(historyResponse.status, 200);
   const history = await historyResponse.json();
   assert.equal(history.executions.length, 1);
   assert.equal(history.executions[0].status, "completed");
   assert.equal(history.executions[0].toolResult.ok, true);
-  const duplicate = await fetch(path + "/run", { method: "POST", signal: AbortSignal.timeout(5000) });
+  const duplicate = await apiFetch(path + "/run", { method: "POST", signal: AbortSignal.timeout(5000) });
   assert.equal(duplicate.status, 409, "Duplicate run was not rejected.");
-  console.log("PASS: HTTP conversation creation -> live DeepSeek -> mock orders -> persisted reply and execution -> duplicate rejected.");
+  console.log("PASS: authentication and customer isolation -> HTTP conversation creation -> live DeepSeek -> mock orders -> persisted reply and execution -> duplicate rejected.");
 }
 
 try { await run(); }
