@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+
+# Test output
+coverage/
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Prisma / SQLite local data
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs and tooling
+*.log
+.pnpm-debug.log*
+*.tsbuildinfo
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

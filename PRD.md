@@ -1,0 +1,228 @@
+# AI Customer Service Workbench — MVP PRD
+
+## 1. 项目定位
+AI Customer Service Workbench 是一个模块化、可扩展的企业 AI 客服平台。
+
+平台统一接入客户沟通渠道、企业知识和业务系统，通过 AI Agent 辅助或自动完成：
+- 客户问题理解
+- 企业知识查询
+- 客户上下文读取
+- 业务工具调用
+- 决策与执行
+- 人工审批
+- 人工客服交接
+
+核心原则：
+
+> 核心平台保持稳定，业务差异尽可能通过模块和配置解决。
+
+当前阶段只实现 MVP，不追求完整企业级能力。
+
+## 2. MVP 核心流程
+用户输入问题  
+→ 创建 Conversation / Ticket  
+→ Agent Runtime 处理任务  
+→ 查询 Knowledge / Customer Context  
+→ 必要时调用 Tool  
+→ Policy 判断是否允许执行  
+→ 自动执行 / 请求审批 / 转人工  
+→ 返回结果
+
+## 3. 核心模块
+
+### Channel Adapter
+负责接收外部消息。
+
+MVP：
+- Web Chat
+- Internal API
+
+未来可扩展：
+- Email
+- LINE
+- WhatsApp
+- 企业微信
+- 其他渠道
+
+### Conversation / Ticket
+维护客服会话。
+
+至少包含：
+- conversation_id
+- customer_id
+- message history
+- status
+- created_at
+- updated_at
+
+状态：
+- open
+- processing
+- waiting_approval
+- human_handoff
+- resolved
+
+### Agent Runtime
+系统核心调度模块。
+
+负责：
+- 理解用户问题
+- 判断需要的信息和能力
+- 调用 Knowledge
+- 调用 Context
+- 调用 Tools
+- 根据 Policy 决定执行方式
+- 生成最终回复
+- 必要时转人工
+
+MVP 优先使用一个主 Agent，不提前构建复杂多 Agent 系统。
+
+### Knowledge
+企业知识查询模块。
+
+MVP 支持：
+- FAQ
+- 产品说明
+- 简单文档知识
+
+当前可使用 Mock 数据，后续可替换为 RAG、Vector Database 或企业知识源。
+
+### Customer Context
+提供客户相关信息，例如：
+- 客户基本资料
+- 订单
+- 服务状态
+- 历史问题
+- 客户等级
+
+MVP 使用 Mock 数据。
+
+### Tools
+Agent 可调用的业务能力，例如：
+- 查询订单
+- 查询退款状态
+- 修改地址
+- 创建退款申请
+- 创建工单
+
+MVP 只实现少量 Mock Tools。
+
+### Policy Engine
+判断某项操作是否允许自动执行。
+
+MVP 使用简单规则：
+- 查询类操作 → 自动执行
+- 低风险操作 → 自动执行
+- 高风险操作 → 人工审批
+
+例如：
+- 查询订单 → 自动执行
+- 查询物流 → 自动执行
+- 修改地址 → 需要审批
+- 退款 → 需要审批
+
+### Approval
+处理人工审批。
+
+MVP 支持：
+- 创建审批请求
+- 查看审批内容
+- approve
+- reject
+
+### Human Handoff
+以下情况可转人工：
+- Agent 无法回答
+- 用户主动要求人工
+- Tool 执行失败
+- Policy 要求人工处理
+
+## 4. MVP 管理界面
+
+### Conversation List
+显示：
+- conversation_id
+- customer
+- status
+- latest message
+- updated time
+
+### Conversation Detail
+显示：
+- 消息记录
+- Agent 回复
+- Tool 调用记录
+- Policy 判断
+- Approval 状态
+
+### Approval Panel
+显示：
+- 待审批操作
+- 参数
+- 原因
+- Approve
+- Reject
+
+## 5. 数据策略
+当前没有真实企业接口和数据，因此 MVP 使用：
+- Mock Customer
+- Mock Order
+- Mock Knowledge
+- Mock Tools
+
+Mock 数据应尽量模拟未来真实接口结构。
+
+真实服务接入时，应尽量不修改 Agent Runtime。
+
+## 6. 架构原则
+优先遵循：
+- 模块化
+- 低耦合
+- 接口清晰
+- 可替换
+- 可测试
+- 核心稳定
+- 业务配置化
+
+避免为了 MVP 提前设计复杂企业架构。
+
+## 7. 暂不实现
+MVP 暂不实现：
+- 完整多 Agent 系统
+- 多租户
+- 企业级权限体系
+- 高可用集群
+- 大规模消息队列
+- 复杂工作流引擎
+- 完整 CRM / ERP 集成
+- 完整渠道接入
+- 企业级监控
+- 高级 RAG 优化
+- 自动模型路由
+- Billing
+
+## 8. MVP 成功标准
+
+### Demo 1：订单查询
+用户：“我的订单什么时候到？”
+
+系统：
+1. 创建 Conversation
+2. Agent 判断需要查询订单
+3. 调用 Order Tool
+4. 获取订单状态
+5. 返回物流信息
+
+### Demo 2：退款审批
+用户：“帮我退款。”
+
+系统：
+1. Agent 判断需要退款
+2. 调用 Policy Engine
+3. 判断需要人工审批
+4. 创建 Approval
+5. 人工 Approve
+6. 执行 Refund Tool
+7. Agent 返回退款结果
+
+完成以上两个闭环，即认为 MVP 核心架构成立。
