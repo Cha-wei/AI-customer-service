@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { requireAdminSession } from "@/modules/admin-auth";
 import { PrismaExecutionReader } from "@/modules/agent-runtime/prisma-execution-reader";
 import { ConversationNotFoundError } from "@/modules/conversations";
 import { getConversationService } from "@/modules/conversations/composition-root";
@@ -10,6 +11,7 @@ const statusLabels: Record<string, string> = { open: "待处理", processing: "�
 const executionLabels: Record<string, string> = { running: "执行中", completed: "已完成", failed: "失败" };
 
 export default async function ConversationDetail({ params }: { params: Promise<{ conversationId: string }> }) {
+  await requireAdminSession();
   const { conversationId } = await params;
   const { conversation, page } = await loadConversation(conversationId);
 

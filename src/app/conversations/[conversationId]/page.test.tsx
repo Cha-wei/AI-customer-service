@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import ConversationDetail from "./page";
 
 const { get, listExecutions } = vi.hoisted(() => ({ get: vi.fn(), listExecutions: vi.fn() }));
+vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/modules/conversations/composition-root", () => ({
   getConversationService: () => ({ get }),
