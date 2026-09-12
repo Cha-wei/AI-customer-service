@@ -50,9 +50,14 @@ Repeated runs without a new customer message return 409.
 The default `RuleIntentProvider` is a deterministic Chinese/English keyword demo,
 not an LLM. `IntentProvider`, `AgentRuntime`, and the typed `RuntimeTools` registry
 are injectable; only the read-only order tool is registered. No model key is required.
-The run guard is process-local, not a distributed lock. Reply persistence and status
-updates are separate operations; crash recovery and transactional execution records
-remain future work. Internal endpoints assume a trusted local caller and must not
+Execution claims and reply completion use database transactions. `RuntimeExecution`
+records the customer message, tool result, completion status, and sanitized failure code.
+Each message can start only one execution. Apply migrations with `pnpm exec prisma migrate deploy`
+before running the updated app. Call `POST /api/internal/runtime/recover` after a restart
+or during maintenance to move executions older than 15 minutes to human handoff.
+Recovery never repeats a tool call; a late worker cannot commit a recovered execution.
+There is no automatic scheduler or tool cancellation; tool results are recorded at
+completion, so results from a crashed worker may be absent. Internal endpoints assume a trusted local caller and must not
 be exposed publicly without authentication and customer ownership checks.
 
 ## Project layout

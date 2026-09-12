@@ -1,5 +1,6 @@
 import type { ConversationService, Message } from "../conversations";
 import type { OrderQueryOutput, Tool, ToolResult } from "../tools";
+import type { ExecutionStore } from "./execution-store";
 
 export interface IntentProvider {
   classify(message: string): Promise<"order_query" | "handoff">;
@@ -36,6 +37,7 @@ export class CustomerServiceRuntime implements AgentRuntime {
     private readonly conversations: Pick<ConversationService, "get" | "transition" | "appendMessage">,
     private readonly intents: IntentProvider,
     private readonly tools: RuntimeTools,
+    private readonly executions: ExecutionStore,
   ) {}
 
   async run(conversationId: string): Promise<RuntimeResult> {
@@ -48,7 +50,7 @@ export class CustomerServiceRuntime implements AgentRuntime {
       if (conversation.status !== "open" || message?.role !== "customer") {
         throw new RuntimeConflictError("An open conversation with an unanswered customer message is required.");
       }
-      await this.conversations.transition(id, "processing");
+      const executionId = await this.executions.begin(id, message.id);
       try {
         const intent = await this.intents.classify(message.content);
         let toolResult: ToolResult<OrderQueryOutput> | null = null;
@@ -68,12 +70,11 @@ export class CustomerServiceRuntime implements AgentRuntime {
               : "暂时无法查询订单，已转交人工客服处理。";
           }
         }
-        const reply = await this.conversations.appendMessage({ conversationId: id, role: "agent", content });
-        await this.conversations.transition(id, status);
+        const reply = await this.executions.complete(executionId, content, status, toolResult);
         return { status, reply, toolResult };
       } catch (error) {
         // Persistence errors remain visible to callers; do not leave the session processing.
-        await this.conversations.transition(id, "human_handoff");
+        await this.executions.fail(executionId);
         throw error;
       }
     } finally {

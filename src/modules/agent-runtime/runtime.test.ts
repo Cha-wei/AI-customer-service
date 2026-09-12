@@ -2,6 +2,7 @@ import { ConversationService, type Conversation, type ConversationRepository } f
 import { MockCustomerContextProvider, type CustomerContextProvider } from "../customer-context";
 import { OrderQueryTool } from "../tools";
 import { CustomerServiceRuntime, RuleIntentProvider } from "./runtime";
+import type { ExecutionStore } from "./execution-store";
 
 function setup(customerId = "customer-1", question = "我的订单什么时候到？", provider: CustomerContextProvider = new MockCustomerContextProvider()) {
   const state: Conversation = {
@@ -21,7 +22,17 @@ function setup(customerId = "customer-1", question = "我的订单什么时候�
   };
   const tool = new OrderQueryTool(provider);
   const execute = vi.spyOn(tool, "execute");
-  const runtime = new CustomerServiceRuntime(new ConversationService(repository), new RuleIntentProvider(), { orderQuery: tool });
+  const executions: ExecutionStore = {
+    begin: async () => { state.status = "processing"; return "execution-1"; },
+    complete: async (_id, content, status) => {
+      const reply = await repository.appendMessage({ conversationId: state.id, role: "agent", content });
+      state.status = status;
+      return reply!;
+    },
+    fail: async () => { state.status = "human_handoff"; },
+    recoverExpired: async () => 0,
+  };
+  const runtime = new CustomerServiceRuntime(new ConversationService(repository), new RuleIntentProvider(), { orderQuery: tool }, executions);
   return { runtime, state, execute, repository };
 }
 
