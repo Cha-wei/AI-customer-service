@@ -68,6 +68,25 @@ There is no automatic scheduler or tool cancellation; tool results are recorded 
 completion, so results from a crashed worker may be absent. Internal endpoints assume a trusted local caller and must not
 be exposed publicly without authentication and customer ownership checks.
 
+## Optional OpenAI intent classification
+
+The default `INTENT_PROVIDER=rule` remains offline. To opt in, configure local
+`.env` with `INTENT_PROVIDER=openai`, `OPENAI_API_KEY`, and `OPENAI_MODEL` (an
+account-accessible model supporting Responses API Structured Outputs). Restart
+the server after changing configuration. Never commit a populated environment file.
+`OPENAI_TIMEOUT_MS` defaults to 15000 and must be between 1 and 120000.
+Invalid configuration fails instead of silently selecting another provider.
+
+The adapter uses [Responses Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+with `store: false`, and sends only the current customer question to OpenAI.
+The question itself may contain personal data. Profiles and order results are not
+sent to the model. The model chooses only `order_query` or `handoff`; customer IDs
+still come from the conversation, and replies use actual tool data.
+Timeouts, HTTP/network errors, refusals, and invalid output produce a handoff reply
+and a persisted `MODEL_*` failure code, without exposing raw upstream messages.
+Requests are not automatically retried. Tests mock HTTP and require no API key;
+a live model smoke test must be run separately with local credentials.
+
 ## Project layout
 
 - `src/app`: Next.js UI and Internal API routes

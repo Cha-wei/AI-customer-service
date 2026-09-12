@@ -11,8 +11,7 @@ coverage/
 
 # Local environment files
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 
 # Prisma / SQLite local data

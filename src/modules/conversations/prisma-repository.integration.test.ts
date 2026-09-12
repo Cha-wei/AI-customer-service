@@ -7,6 +7,7 @@ import { OrderQueryTool } from "../tools";
 import { MockCustomerContextProvider } from "../customer-context";
 import { PrismaExecutionStore } from "../agent-runtime/prisma-execution-store";
 import { PrismaExecutionReader } from "../agent-runtime/prisma-execution-reader";
+import { IntentProviderError, type IntentFailureCode } from "../agent-runtime/intent-error";
 
 describe("PrismaConversationRepository", () => {
   const client = new PrismaClient();
@@ -149,5 +150,21 @@ describe("PrismaConversationRepository", () => {
     expect(await reader.list(second.id)).toEqual({ executions: [], nextOffset: null });
     await expect(reader.list("missing")).rejects.toThrow("was not found");
     await expect(reader.list(first.id, -1)).rejects.toThrow("Invalid");
+  });
+
+  it.each<IntentFailureCode>(["MODEL_TIMEOUT", "MODEL_UNAVAILABLE", "MODEL_INVALID_OUTPUT", "MODEL_REFUSED"])("persists %s and a handoff reply without calling tools", async (code) => {
+    const service = new ConversationService(repository);
+    const created = await service.create({ customerId: "customer-1", initialMessage: "查订单" });
+    const tool = new OrderQueryTool(new MockCustomerContextProvider());
+    const execute = vi.spyOn(tool, "execute");
+    const runtime = new CustomerServiceRuntime(service, {
+      classify: async () => { throw new IntentProviderError(code); },
+    }, { orderQuery: tool }, new PrismaExecutionStore(client));
+    const result = await runtime.run(created.id);
+    expect(result.status).toBe("human_handoff");
+    expect(result.reply.content).toContain("人工");
+    expect(execute).not.toHaveBeenCalled();
+    expect((await repository.findById(created.id))?.status).toBe("human_handoff");
+    expect(await client.runtimeExecution.findFirst()).toMatchObject({ status: "failed", errorCode: code, toolResult: null });
   });
 });

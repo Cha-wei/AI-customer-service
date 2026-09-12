@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import type { Message } from "../conversations";
 import type { ExecutionStore } from "./execution-store";
+import type { IntentFailureCode } from "./intent-error";
 import { RuntimeConflictError, type RuntimeResult } from "./runtime";
 
 export class PrismaExecutionStore implements ExecutionStore {
@@ -19,11 +20,11 @@ export class PrismaExecutionStore implements ExecutionStore {
     });
   }
 
-  async complete(id: string, content: string, status: RuntimeResult["status"], toolResult: RuntimeResult["toolResult"]): Promise<Message> {
+  async complete(id: string, content: string, status: RuntimeResult["status"], toolResult: RuntimeResult["toolResult"], errorCode?: IntentFailureCode): Promise<Message> {
     return this.client.$transaction(async (tx) => {
       const execution = await tx.runtimeExecution.findUniqueOrThrow({ where: { id } });
       const claimed = await tx.runtimeExecution.updateMany({ where: { id, status: "running" }, data: {
-        status: "completed", finishedAt: new Date(), toolResult: toolResult === null ? null : JSON.stringify(toolResult),
+        status: errorCode ? "failed" : "completed", errorCode: errorCode ?? null, finishedAt: new Date(), toolResult: toolResult === null ? null : JSON.stringify(toolResult),
       } });
       if (!claimed.count) throw new RuntimeConflictError("Execution is no longer active.");
       const updated = await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing" }, data: { status } });

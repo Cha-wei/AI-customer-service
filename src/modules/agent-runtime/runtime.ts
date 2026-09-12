@@ -1,6 +1,7 @@
 import type { ConversationService, Message } from "../conversations";
 import type { OrderQueryOutput, Tool, ToolResult } from "../tools";
 import type { ExecutionStore } from "./execution-store";
+import { IntentProviderError, type IntentFailureCode } from "./intent-error";
 
 export interface IntentProvider {
   classify(message: string): Promise<"order_query" | "handoff">;
@@ -8,10 +9,14 @@ export interface IntentProvider {
 
 export class RuleIntentProvider implements IntentProvider {
   async classify(message: string): Promise<"order_query" | "handoff"> {
-    if (/退款|退货|修改|取消|人工|refund|cancel|change|human/i.test(message)) return "handoff";
+    if (requiresHuman(message)) return "handoff";
     return /订单|物流|快递|什么时候到|order|delivery|tracking|shipment/i.test(message)
       ? "order_query" : "handoff";
   }
+}
+
+export function requiresHuman(message: string): boolean {
+  return /退款|退货|修改|取消|人工|refund|cancel|change|human/i.test(message);
 }
 
 export interface RuntimeTools {
@@ -52,7 +57,14 @@ export class CustomerServiceRuntime implements AgentRuntime {
       }
       const executionId = await this.executions.begin(id, message.id);
       try {
-        const intent = await this.intents.classify(message.content);
+        let intent: "order_query" | "handoff" = "handoff";
+        let intentFailure: IntentFailureCode | undefined;
+        try {
+          intent = await this.intents.classify(message.content);
+        } catch (error) {
+          if (!(error instanceof IntentProviderError)) throw error;
+          intentFailure = error.code;
+        }
         let toolResult: ToolResult<OrderQueryOutput> | null = null;
         let content = "这个问题需要人工客服协助，已转交人工处理。";
         let status: RuntimeResult["status"] = "human_handoff";
@@ -70,7 +82,7 @@ export class CustomerServiceRuntime implements AgentRuntime {
               : "暂时无法查询订单，已转交人工客服处理。";
           }
         }
-        const reply = await this.executions.complete(executionId, content, status, toolResult);
+        const reply = await this.executions.complete(executionId, content, status, toolResult, intentFailure);
         return { status, reply, toolResult };
       } catch (error) {
         // Persistence errors remain visible to callers; do not leave the session processing.
