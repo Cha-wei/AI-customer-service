@@ -14,3 +14,8 @@ Planned MVP boundaries:
 - `handoff`: escalation to human support
 
 Each replaceable capability should expose a small interface. Mock and real adapters must implement the same contract so infrastructure changes do not require rewriting the runtime.
+
+Current replaceable boundaries:
+
+- `customer-context` exposes `CustomerContextProvider`; the MVP implementation serves mock customer and order data.
+- `tools` exposes a uniform `Tool` call/result contract; `OrderQueryTool` reads orders and logistics through `CustomerContextProvider`.
