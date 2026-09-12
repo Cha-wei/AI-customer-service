@@ -87,6 +87,25 @@ and a persisted `MODEL_*` failure code, without exposing raw upstream messages.
 Requests are not automatically retried. Tests mock HTTP and require no API key;
 a live model smoke test must be run separately with local credentials.
 
+## Optional DeepSeek intent classification
+
+In local `.env`, set `INTENT_PROVIDER=deepseek`, `DEEPSEEK_API_KEY`,
+`DEEPSEEK_BASE_URL=https://api.deepseek.com`, `DEEPSEEK_MODEL=deepseek-flash`, and
+`DEEPSEEK_TIMEOUT_MS=30000`. Model names are configurable; use one available to
+your account. Restart the server after configuration. OpenAI credentials are not
+needed in this mode. The default remains offline `rule`.
+
+The adapter uses [DeepSeek Chat Completions JSON Output](https://api-docs.deepseek.com/guides/json_mode/)
+with thinking disabled and validates the intent locally. Only the current question
+is sent to DeepSeek; profiles and order results stay local. Only official API base
+URLs (`https://api.deepseek.com`, optionally `/v1`) are accepted. There are no
+automatic retries. Empty/truncated/invalid output, refusals, timeout and HTTP errors
+use the existing `MODEL_*` failure codes and human handoff. All automated tests
+mock HTTP; real credentials remain in ignored local environment files.
+An optional live smoke test sends one synthetic question using local `.env`:
+in PowerShell, set `$env:RUN_DEEPSEEK_LIVE='1'` and run `pnpm test`.
+Remove that environment variable afterwards; the live test is skipped by default.
+
 ## Project layout
 
 - `src/app`: Next.js UI and Internal API routes
