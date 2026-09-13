@@ -26,6 +26,27 @@ checks the cookie identity and conversation ownership; body identity/role overri
 are rejected, foreign conversations return 404, and writes require same Origin.
 Preserve the public Host/protocol through the reverse proxy.
 
+Session lifecycle hardening: every issuance has a unique nonce. `POST /api/chat/logout`
+requires the same Origin, durably revokes the current cookie digest in SQLite, and
+deletes the browser cookie. Replayed revoked cookies are rejected, including after
+restart. Apply migrations before deploying. Expired revocation rows can be deleted
+after `expiresAt`; they contain no raw cookies. Logout ends this browser session,
+not all customer devices or the upstream identity-provider session.
+
+The chat binds POST drafts to the account key returned by GET in `X-Chat-Account`.
+This key is a public account discriminator, not an authentication credential; the
+HttpOnly cookie remains authoritative. On 401 or a changed account, the UI clears
+history, orders and drafts and discards in-flight responses. Account changes are
+checked every 2.5 seconds and on focus; logout also signals other same-origin tabs.
+The host must revoke the previous chat session before replacing its login identity,
+and coordinate upstream logout. Real host-login integration is still required.
+
+For TLS termination, set server-only `APP_ORIGIN=https://your-test-host` (exact origin,
+no trailing slash). Origin checks use this configured value instead of trusting
+forwarded headers. Keep the Next server reachable only from the reverse proxy and
+persist the SQLite database across restarts. See `DEPLOYMENT_ACCEPTANCE.md` for
+the integration prerequisites and current acceptance limits.
+
 Send failures retain the draft. If a message was saved but runtime processing failed,
 the API returns its conversation ID and a warning so the customer can inspect history.
 Network timeouts can have an uncertain outcome: refresh history before manually

@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ChatClient from "./chat-client";
 const inbox = { conversations: [], orders: [{ id: "order-1001", label: "耳机" }], page: 1, pageSize: 20, total: 0 };
-const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
+const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "x-chat-account": "account-1" } });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 it("requires order selection, sends only customer input and displays persisted replies", async () => {
   const fetcher = vi.fn(async (_url: string, options?: RequestInit) => options?.method === "POST" ? reply({ id: "c1" }) : _url.includes("?id=") ? reply({ id: "c1", status: "waiting_approval", messages: [{ id: "m1", role: "agent", content: "退款申请已提交" }], nextCursor: null }) : reply(inbox));
@@ -16,7 +16,7 @@ it("requires order selection, sends only customer input and displays persisted r
   expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
   const sent = fetcher.mock.calls.find(([, options]) => options?.method === "POST")![1]!;
   expect(JSON.parse(sent.body as string)).toEqual({ content: "申请退款", orderId: "order-1001" });
-  expect(sent.headers).toEqual({ "Content-Type": "application/json" });
+  expect(sent.headers).toEqual({ "Content-Type": "application/json", "X-Chat-Account": "account-1" });
 });
 it("retains the draft on failure and lets the customer reload after a session error", async () => {
   vi.stubGlobal("fetch", vi.fn(async (_url, options) => options?.method === "POST" ? Promise.reject(new Error("网络中断")) : reply(inbox)));
@@ -45,4 +45,29 @@ it("shows expired session errors without enabling send", async () => {
   render(<ChatClient />);
   expect(await screen.findByRole("alert")).toHaveTextContent("客户登录已失效");
   expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+});
+
+it("clears history and drafts when an existing session expires", async () => {
+  let expired = false;
+  vi.stubGlobal("fetch", vi.fn(async () => expired ? reply({}, 401) : reply(inbox)));
+  render(<ChatClient />);
+  await waitFor(() => expect(screen.getByLabelText("消息")).toBeEnabled());
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "private draft" } });
+  expired = true;
+  fireEvent(window, new Event("focus"));
+  await screen.findByRole("alert");
+  expect(screen.getByLabelText("消息")).toHaveValue("");
+  expect(screen.getByLabelText("消息")).toBeDisabled();
+});
+it("clears the previous account before accepting a different account response", async () => {
+  let switched = false;
+  vi.stubGlobal("fetch", vi.fn(async () => switched ? new Response(JSON.stringify(inbox), { headers: { "x-chat-account": "account-2" } }) : reply(inbox)));
+  render(<ChatClient />);
+  await waitFor(() => expect(screen.getByLabelText("消息")).toBeEnabled());
+  fireEvent.change(screen.getByLabelText("消息"), { target: { value: "old account draft" } });
+  switched = true;
+  fireEvent(window, new Event("focus"));
+  await screen.findByRole("alert");
+  expect(screen.getByLabelText("消息")).toHaveValue("");
+  expect(screen.getByLabelText("消息")).toBeDisabled();
 });

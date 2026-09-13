@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model RevokedCustomerSession {
+  digest String @id
+  expiresAt DateTime
+  @@index([expiresAt])
+}
+
 model Conversation {
   id         String    @id @default(cuid())
   customerId String

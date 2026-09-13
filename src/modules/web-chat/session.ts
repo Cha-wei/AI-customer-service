@@ -1,4 +1,5 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { prisma } from "@/lib/prisma";
 import { cookies } from "next/headers";
 import { AccessError } from "../internal-auth";
 
@@ -10,7 +11,8 @@ function sign(value: string) {
 }
 // Called only after the host application's server has authenticated the customer.
 export function createCustomerSession(customerId: string, now = Date.now()) {
-  const payload = Buffer.from(JSON.stringify({ customerId, expires: now + 8 * 3600_000 })).toString("base64url");
+  if (!customerId.trim() || customerId !== customerId.trim() || customerId.length > 128) throw new AccessError(401, "unauthorized");
+  const payload = Buffer.from(JSON.stringify({ customerId, nonce: randomUUID(), expires: now + 8 * 3600_000 })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 export function verifyCustomerSession(value: string | undefined, now = Date.now()): string {
@@ -25,5 +27,20 @@ export function verifyCustomerSession(value: string | undefined, now = Date.now(
   } catch { throw new AccessError(401, "unauthorized"); }
 }
 export async function customerIdentity() {
-  return verifyCustomerSession((await cookies()).get(CUSTOMER_COOKIE)?.value);
+  const value = (await cookies()).get(CUSTOMER_COOKIE)?.value;
+  const identity = verifyCustomerSession(value);
+  if (await prisma.revokedCustomerSession.findUnique({ where: { digest: sessionDigest(value!) } })) throw new AccessError(401, "unauthorized");
+  return identity;
+}
+
+function sessionDigest(value: string) { return createHash("sha256").update(value).digest("hex"); }
+export async function revokeCustomerSession() {
+  const value = (await cookies()).get(CUSTOMER_COOKIE)?.value;
+  if (!value) return;
+  try { verifyCustomerSession(value); } catch (error) {
+    if (error instanceof AccessError && error.status === 401) return;
+    throw error;
+  }
+  const { expires } = JSON.parse(Buffer.from(value.split(".")[0], "base64url").toString());
+  await prisma.revokedCustomerSession.upsert({ where: { digest: sessionDigest(value) }, create: { digest: sessionDigest(value), expiresAt: new Date(expires) }, update: {} });
 }

@@ -14,6 +14,7 @@
     "test": "cross-env DATABASE_URL=file:./test.db vitest run",
     "test:watch": "cross-env DATABASE_URL=file:./test.db vitest",
     "test:live:orders": "node scripts/verify-deepseek-orders.mjs",
+    "test:e2e:chat:https": "node scripts/verify-web-chat.mjs --https",
     "test:e2e:chat": "node scripts/verify-web-chat.mjs"
   },
   "dependencies": {

@@ -6,13 +6,6 @@ type Message = { id: string; role: string; content: string };
 type History = { id: string; status: string; messages: Message[]; nextCursor: string | null };
 type Inbox = { conversations: { id: string; latestMessage: Message | null }[]; orders: { id: string; label: string }[]; page: number; pageSize: number; total: number };
 const statuses: Record<string, string> = { open: "可以继续提问", processing: "正在处理", waiting_approval: "等待人工审批，结果将自动更新", human_handoff: "已转交人工客服", resolved: "会话已解决" };
-async function api(path: string, options?: RequestInit) {
-  const response = await fetch(`/api/chat${path}`, { ...options, cache: "no-store", signal: AbortSignal.timeout(45000) });
-  if (response.status === 401) throw new Error("客户登录已失效，请从已登录的客户入口重新进入。");
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message ?? "服务暂不可用，请重试。");
-  return data;
-}
 
 export default function ChatClient() {
   const [inbox, setInbox] = useState<Inbox | null>(null);
@@ -26,12 +19,56 @@ export default function ChatClient() {
   const generation = useRef(0);
   const sending = useRef(false);
   const pageRef = useRef(1);
+  const account = useRef<string | null>(null);
+  const epoch = useRef(0);
+  const [signedOut, setSignedOut] = useState(false);
+  const clearAccount = useCallback(() => {
+    epoch.current++;
+    generation.current++;
+    account.current = null;
+    setInbox(null); setHistory(null); setSelected(null); setContent(""); setOrderId("");
+    setSignedOut(true);
+    pageRef.current = 1;
+  }, []);
+  const api = useCallback(async (path: string, options?: RequestInit) => {
+    const current = epoch.current;
+    const response = await fetch(`/api/chat${path}`, { ...options, headers: { ...options?.headers, ...(account.current ? { "X-Chat-Account": account.current } : {}) }, cache: "no-store", signal: AbortSignal.timeout(45000) });
+    if (current !== epoch.current) throw new Error("客户会话已变更，请重新加载。");
+    const next = response.headers.get("x-chat-account");
+    if (response.status === 401 || (next && account.current && next !== account.current)) {
+      clearAccount();
+      throw new Error("客户登录已失效或账号已切换，请从已登录的客户入口重新进入。");
+    }
+    const data = await response.json();
+    if (current !== epoch.current) throw new Error("客户会话已变更，请重新加载。");
+    if (next && account.current && next !== account.current) {
+      clearAccount();
+      throw new Error("客户账号已切换，请重新加载。");
+    }
+    if (!response.ok) throw new Error(data.error?.message ?? "服务暂不可用，请重试。");
+    if (next) account.current = next;
+    return data;
+  }, [clearAccount]);
+  async function logout() {
+    clearAccount();
+    setError("");
+    try {
+      await api("/logout", { method: "POST" });
+      try { localStorage.setItem("chat-logout", String(Date.now())); } catch { /* Polling also invalidates other tabs when storage is disabled. */ }
+      setError("已退出在线客服。请从客户登录入口重新进入。");
+    } catch (e) { setError((e as Error).message); }
+  }
+  useEffect(() => {
+    const reset = (event: StorageEvent) => { if (event.key === "chat-logout") clearAccount(); };
+    window.addEventListener("storage", reset);
+    return () => window.removeEventListener("storage", reset);
+  }, [clearAccount]);
   const refund = /退款|refund/i.test(content) && !/人工|human/i.test(content);
   const refreshInbox = useCallback(async (page = pageRef.current) => {
     const data = await api(`?page=${page}`);
     pageRef.current = data.page;
-    setInbox(data);
-  }, []);
+    setInbox(data); setSignedOut(false);
+  }, [api]);
   useEffect(() => { refreshInbox().catch(e => setError(e.message)); }, [refreshInbox]);
   useEffect(() => {
     if (!selected) return;
@@ -51,7 +88,14 @@ export default function ChatClient() {
     };
     void refresh();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [selected]);
+  }, [selected, api]);
+  useEffect(() => {
+    if (signedOut) return;
+    const check = () => { refreshInbox().catch(e => setError(e.message)); };
+    const timer = setInterval(check, 2500);
+    window.addEventListener("focus", check);
+    return () => { clearInterval(timer); window.removeEventListener("focus", check); };
+  }, [refreshInbox, signedOut]);
   function select(id: string | null) {
     generation.current++;
     setSelected(id); setHistory(null); setError(""); setContent(""); setOrderId("");
@@ -80,8 +124,8 @@ export default function ChatClient() {
     } catch (e) { setError(`${(e as Error).message} 如发送结果不确定，请先刷新历史确认，避免重复申请。`); }
     finally { sending.current = false; setBusy(false); }
   }
-  const locked = busy || !inbox || (!!selected && (!history || history.status !== "open" || history.messages.at(-1)?.role === "customer"));
-  return <div className="chat-grid"><aside className="panel chat-sidebar"><h2>我的会话</h2><button disabled={busy} onClick={() => select(null)}>新建会话</button>
+  const locked = signedOut || busy || !inbox || (!!selected && (!history || history.status !== "open" || history.messages.at(-1)?.role === "customer"));
+  return <div className="chat-grid"><aside className="panel chat-sidebar"><h2>我的会话</h2><button className="secondary-button" onClick={logout}>退出登录</button><button disabled={busy} onClick={() => select(null)}>新建会话</button>
     {!inbox && <p>正在加载客户会话…</p>}
     {inbox?.conversations.length === 0 && <p className="muted">还没有会话，发送消息开始咨询。</p>}
     {inbox?.conversations.map(c => <button className="chat-conversation secondary-button" aria-pressed={selected === c.id} disabled={busy} key={c.id} onClick={() => select(c.id)}>{c.latestMessage?.content ?? "客服会话"}</button>)}

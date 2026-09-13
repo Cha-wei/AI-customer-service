@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from "node:crypto";
 import { GET, POST } from "./route";
 import { AccessError } from "@/modules/internal-auth";
 import { ConversationNotFoundError } from "@/modules/conversations";
@@ -8,7 +9,7 @@ vi.mock("@/modules/web-chat/service", () => ({ ownedConversation: mocks.owned, s
 vi.mock("@/modules/conversations/composition-root", () => ({ getConversationService: () => ({ list: mocks.list, listMessages: mocks.messages }) }));
 vi.mock("@/modules/customer-context/composition-root", () => ({ getCustomerContextProvider: () => ({ listOrders: mocks.orders }) }));
 beforeEach(() => { vi.resetAllMocks(); mocks.identity.mockResolvedValue("customer-1"); });
-const post = (body: unknown, origin = "http://localhost") => new Request("http://localhost/api/chat", { method: "POST", headers: { origin }, body: JSON.stringify(body) });
+const post = (body: unknown, origin = "http://localhost") => new Request("http://localhost/api/chat", { method: "POST", headers: { origin, "x-chat-account": createHash("sha256").update("customer-1").digest("hex") }, body: JSON.stringify(body) });
 it("requires a customer session even for reads", async () => {
   mocks.identity.mockRejectedValue(new AccessError(401, "unauthorized"));
   expect((await GET(new Request("http://localhost/api/chat"))).status).toBe(401);
@@ -39,4 +40,10 @@ it("uses only the trusted identity and sanitizes unexpected failures", async () 
   expect(mocks.send).toHaveBeenCalledWith("customer-1", { content: "hello" });
   expect(response.status).toBe(503);
   expect(await response.text()).not.toContain("secret-provider-details");
+});
+
+it("rejects an old account draft after the cookie switches accounts", async () => {
+  mocks.identity.mockResolvedValue("customer-2");
+  expect((await POST(post({ content: "退款", orderId: "order-1001" }))).status).toBe(401);
+  expect(mocks.send).not.toHaveBeenCalled();
 });
