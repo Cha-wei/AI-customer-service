@@ -87,6 +87,27 @@ Login has a shared single-process budget of five attempts per 15 minutes, reset 
 
 A modular AI customer service platform MVP with order queries and human-approved Mock refunds.
 
+## Human handoff
+
+Customers can ask for a human, or administrators can use **转人工** on an open
+conversation. In the workbench, filter **状态 → 人工接管**, open the conversation and
+use **人工回复**. The message list refreshes every 2.5 seconds, preserving older loaded
+history. Replies appear as **人工客服** in Web Chat. Customer follow-ups stay verbatim;
+even refund-related text triggers no AI run, business tool or approval in human mode.
+
+The existing one-unanswered-customer-message guard remains: a customer can send
+another message after a staff reply. Administrators use **标记已解决** to close the
+conversation; both sides are then prevented from sending. A new customer conversation
+can start a fresh AI flow. The MVP uses the existing shared administrator account;
+there is no agent assignment or automatic return from handoff to AI.
+
+`POST /api/admin/conversations/:id/messages` requires an admin session and same
+Origin, and accepts `content` and `lastMessageId`. The transaction verifies handoff
+state, absence of running AI and that the latest message still matches. Duplicate
+or stale requests return 409 without another reply. A failed or uncertain browser
+send retains both draft and original snapshot; review history and edit the draft
+before intentionally sending again. There are no automatic reply retries.
+
 ## Requirements
 
 - Node.js 20.9 or newer

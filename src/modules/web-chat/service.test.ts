@@ -34,3 +34,15 @@ it("rejects sending to busy conversations or past an unanswered message", async 
   expect(create).not.toHaveBeenCalled();
   expect(m.run).not.toHaveBeenCalled();
 });
+
+it("persists human-mode messages verbatim without refund routing or AI execution", async () => {
+  m.header.mockResolvedValue({ customerId: "customer-1", status: "human_handoff" });
+  const create = vi.fn();
+  const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+  m.transaction.mockImplementation(callback => callback({ conversation: { updateMany }, message: { findFirst: async () => ({ role: "human" }), create } }));
+  expect(await sendCustomerMessage("customer-1", { conversationId: "c1", content: "退款原因是包装损坏" })).toEqual({ id: "c1" });
+  expect(create).toHaveBeenCalledWith({ data: { conversationId: "c1", role: "customer", content: "退款原因是包装损坏" } });
+  expect(updateMany.mock.calls[0][0]).toMatchObject({ where: { status: "human_handoff", executions: { none: { status: "running" } } } });
+  expect(m.orders).not.toHaveBeenCalled();
+  expect(m.run).not.toHaveBeenCalled();
+});

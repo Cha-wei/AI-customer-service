@@ -55,3 +55,12 @@ Admin route tests check session and Origin protection. Production acceptance als
 exercises refund forms, approve/reject outcomes and duplicate decision rejection.
 
 After `pnpm build`, run `node scripts/verify-admin.mjs` for production HTTP acceptance: login, cookie flags, protected pages, mock order execution, status updates, logout and throttling. It uses temporary credentials/database and cleans them up. It tests cookie transport with an HTTP client; production browser access still requires HTTPS.
+
+Human handoff coverage includes real SQLite transaction checks for human replies,
+replayed/concurrent/stale replies, active AI exclusion, manual takeover and closed
+conversations. Route tests cover administrator auth, CSRF and sanitized errors.
+Component tests protect draft retention and reuse of the original request snapshot
+on network failure. The HTTPS browser acceptance drives customer handoff, a real
+administrator login and filtered inbox, staff reply, verbatim customer follow-up,
+a second staff reply and closure. It checks that execution/approval counts do not
+increase during human mode and that foreign/customer/stale reply requests fail.

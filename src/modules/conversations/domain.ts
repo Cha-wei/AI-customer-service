@@ -8,7 +8,7 @@ export const CONVERSATION_STATUSES = [
 
 export type ConversationStatus = (typeof CONVERSATION_STATUSES)[number];
 
-export const MESSAGE_ROLES = ["customer", "agent", "system"] as const;
+export const MESSAGE_ROLES = ["customer", "agent", "human", "system"] as const;
 
 export type MessageRole = (typeof MESSAGE_ROLES)[number];
 

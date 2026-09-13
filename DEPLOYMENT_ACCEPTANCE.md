@@ -36,6 +36,12 @@ and logout, disabled accounts and old sessions after re-enable, uniform invalid-
 responses, login throttling, and browser bundle credential scans. Unit tests also
 cover expiry, changed account mappings/versions and storage failure.
 
+The same browser harness also completes human handoff: customer requests a human,
+admin filters the inbox and replies, customer sends a refund-related follow-up,
+admin sees it through polling and replies, then closes the conversation. The test
+checks no AI execution or refund approval was started during this exchange and
+rejects customer impersonation, foreign access, stale replies and post-close sends.
+
 Orders and refunds remain Mock operations; there is no real money movement.
 
 ## Future external trial

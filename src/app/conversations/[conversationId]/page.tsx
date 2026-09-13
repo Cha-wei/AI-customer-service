@@ -47,7 +47,7 @@ export default async function ConversationDetail({ params, searchParams }: { par
     </section>
     <div className="detail-grid">
       <section className="panel" aria-labelledby="messages-title"><div className="panel-heading"><div><h2 id="messages-title">消息记录</h2><p>默认显示最新 50 条</p></div></div>
-        <MessageHistory conversationId={conversation.id} initialMessages={messages.messages} initialCursor={messages.nextCursor} />
+        <MessageHistory key={`${conversation.id}:${conversation.status}`} initialStatus={conversation.status} conversationId={conversation.id} initialMessages={messages.messages} initialCursor={messages.nextCursor} />
       </section>
       <section className="panel" aria-labelledby="executions-title"><div className="panel-heading"><div><h2 id="executions-title">执行记录</h2><p>本页 {page.executions.length} 条 · 按时间从早到晚</p></div></div>
         {page.executions.length === 0 ? <Empty text="暂无执行记录" /> : <div className="execution-list">{page.executions.map((execution) => <article className="execution" key={execution.id}><div className="execution-heading"><span className={`status execution-${execution.status}`}>{executionLabels[execution.status]}</span><time dateTime={execution.createdAt.toISOString()}>{formatDate(execution.createdAt)}</time></div><dl><div><dt>工具结果</dt><dd>{formatResult(execution.toolResult)}</dd></div><div><dt>失败原因</dt><dd>{execution.errorCode ?? "—"}</dd></div><div><dt>完成时间</dt><dd>{execution.finishedAt ? formatDate(execution.finishedAt) : "—"}</dd></div></dl></article>)}</div>}

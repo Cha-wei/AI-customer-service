@@ -160,6 +160,48 @@ try {
   await page.unroute('**/api/chat');
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(page.getByLabel('消息历史')).toContainText('MOCK1001');
+  // Human handoff: customer request, staff browser reply, customer follow-up, close.
+  await page.getByRole('button', { name: '新建会话' }).click();
+  await page.getByLabel('消息', { exact: true }).fill('请转人工客服');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('等待人工客服回复');
+  const handoff = await client.conversation.findFirstOrThrow({ where: { customerId: 'customer-1', status: 'human_handoff' }, orderBy: { updatedAt: 'desc' } });
+  const executionCount = await client.runtimeExecution.count({ where: { conversationId: handoff.id } });
+  const staffContext = await browser.newContext();
+  const staff = await staffContext.newPage();
+  await staff.goto(origin + '/login');
+  await staff.getByLabel('管理密码').fill(password);
+  await staff.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(staff).toHaveURL(origin + '/');
+  await staff.getByRole('combobox').selectOption('human_handoff');
+  await staff.getByRole('button', { name: '筛选', exact: true }).click();
+  await staff.locator(`a[href="/conversations/${handoff.id}"]`).click();
+  await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
+  const beforeReply = await client.message.findFirstOrThrow({ where: { conversationId: handoff.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
+  await staff.getByLabel('人工回复', { exact: true }).fill('您好，人工客服已接手，请说明问题。');
+  await staff.getByRole('button', { name: '发送人工回复' }).click();
+  await expect(page.getByLabel('消息历史')).toContainText('人工客服已接手');
+  const humanPost = (activeCookie, activeOrigin = origin) => request(`/api/admin/conversations/${handoff.id}/messages`, { method: 'POST', headers: { cookie: activeCookie, origin: activeOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ content: 'duplicate', lastMessageId: beforeReply.id }) });
+  assert.equal((await humanPost(adminCookie)).status, 409, 'repeated reply denied');
+  assert.equal((await humanPost(cookie)).status, 307, 'customer cannot send staff reply');
+  assert.equal((await humanPost(adminCookie, 'https://evil.example')).status, 403);
+  assert.equal((await post({ conversationId: handoff.id, content: 'foreign reply' }, otherCookie)).status, 404);
+  await page.getByLabel('消息', { exact: true }).fill('退款原因是包装损坏，请人工确认。');
+  await expect(page.getByLabel('请选择退款订单（必选）')).toHaveCount(0);
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(staff.locator('.message-list')).toContainText('退款原因是包装损坏');
+  assert.equal((await post({ conversationId: handoff.id, content: '重复留言' })).status, 409);
+  assert.equal(await client.runtimeExecution.count({ where: { conversationId: handoff.id } }), executionCount, 'no AI in human mode');
+  assert.equal(await client.approval.count({ where: { conversationId: handoff.id } }), 0, 'human text creates no refund approval');
+  await staff.getByLabel('人工回复', { exact: true }).fill('已记录您的问题，本次咨询处理完成。');
+  await staff.getByRole('button', { name: '发送人工回复' }).click();
+  await expect(page.getByLabel('消息历史')).toContainText('本次咨询处理完成');
+  await staff.getByRole('button', { name: '标记已解决' }).click();
+  await expect(page.getByRole('status')).toContainText('会话已解决');
+  await expect(page.getByLabel('消息', { exact: true })).toBeDisabled();
+  assert.equal((await post({ conversationId: handoff.id, content: 'late customer reply' })).status, 409);
+  assert.equal((await humanPost(adminCookie)).status, 409);
+  await staffContext.close();
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile overflow');
   // A second tab logs in as another customer while the first retains an old draft.
@@ -203,7 +245,7 @@ try {
     const contents = await readFile(join(entry.parentPath, entry.name), 'utf8');
     for (const value of [token, password, customerPassword, resetPassword, env.WEB_CHAT_SESSION_SECRET, env.ADMIN_UI_SESSION_SECRET, 'INTERNAL_API_TOKENS', 'WEB_CHAT_SESSION_SECRET']) assert(!contents.includes(value), 'client bundle credential leakage');
   }
-  console.log(`${useHttps ? 'HTTPS loopback TLS proxy' : 'HTTP loopback'}; ` + 'PASS: real customer login, account switch, disable/enable, throttle, logout replay; real browser order query, reload/history, explicit refund selection, automatic approve/reject updates, failure draft/retry, mobile layout, expired session; HTTP identity isolation/CSRF/state guards; client bundle secret scan.');
+  console.log(`${useHttps ? 'HTTPS loopback TLS proxy' : 'HTTP loopback'}; ` + 'PASS: real customer login, account switch, disable/enable, throttle, logout replay; human handoff/staff reply/customer follow-up/close with no AI execution; real browser order query, reload/history, explicit refund selection, automatic approve/reject updates, failure draft/retry, mobile layout, expired session; HTTP identity isolation/CSRF/state guards; client bundle secret scan.');
 } finally {
   await browser?.close();
   if (server && server.exitCode === null) { server.kill(); await new Promise(r => server.once('exit', r)); }
