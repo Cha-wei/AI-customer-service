@@ -64,3 +64,8 @@ on network failure. The HTTPS browser acceptance drives customer handoff, a real
 administrator login and filtered inbox, staff reply, verbatim customer follow-up,
 a second staff reply and closure. It checks that execution/approval counts do not
 increase during human mode and that foreign/customer/stale reply requests fail.
+
+Full MVP trial acceptance is recorded in `MVP_ACCEPTANCE.md`. The HTTPS harness
+now drives approve/reject through the administrator browser, tests staff draft retry,
+and seeds a long synthetic history to check viewport scrolling and reading-position
+preservation. Customer/admin screenshots are saved under ignored `.next/acceptance/`.

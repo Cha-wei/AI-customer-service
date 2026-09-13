@@ -24,6 +24,7 @@ export function MessageHistory({ conversationId, initialMessages, initialCursor,
   const listRef = useRef<HTMLDivElement>(null);
   const previousHeight = useRef<number | null>(null);
   const initialized = useRef(false);
+  const followLatest = useRef(true);
 
   useEffect(() => {
     if (initialStatus !== "human_handoff") return;
@@ -56,6 +57,7 @@ export function MessageHistory({ conversationId, initialMessages, initialCursor,
       if (response.redirected) throw new Error("管理员登录已失效，请重新登录。");
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
+      followLatest.current = true;
       setMessages(current => mergeMessages(current, [result.message]));
       setDraft(""); baseline.current = null;
     } catch (error) { setReplyError(`${(error as Error).message} 请核对记录后编辑草稿再发送。`); }
@@ -71,7 +73,7 @@ export function MessageHistory({ conversationId, initialMessages, initialCursor,
     } else if (previousHeight.current !== null) {
       list.scrollTop += list.scrollHeight - previousHeight.current;
       previousHeight.current = null;
-    }
+    } else if (followLatest.current) list.scrollTop = list.scrollHeight;
   }, [messages]);
 
   async function loadEarlier() {
@@ -98,9 +100,10 @@ export function MessageHistory({ conversationId, initialMessages, initialCursor,
   return <>
     <div className="message-page-controls">
       {cursor ? <button className="secondary-button" disabled={loading} onClick={loadEarlier}>{loading ? "加载中…" : "加载更早消息"}</button> : <span>已到达最早消息</span>}
+      <button className="secondary-button" onClick={() => { followLatest.current = true; if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; }}>查看最新消息</button>
       {error && <span role="alert">加载失败，请重试。</span>}
     </div>
-    <div className="message-list" ref={listRef}>
+    <div className="message-list" ref={listRef} onScroll={event => { const list = event.currentTarget; followLatest.current = list.scrollHeight - list.scrollTop - list.clientHeight < 40; }}>
       {messages.map((message) => <article className={`message message-${message.role}`} key={message.id}>
         <div className="message-meta"><strong>{message.role === "customer" ? "客户" : message.role === "agent" ? "AI 客服" : message.role === "human" ? "人工客服" : "系统"}</strong><time dateTime={new Date(message.createdAt).toISOString()}>{formatDate(new Date(message.createdAt))}</time></div>
         <p>{message.content}</p>

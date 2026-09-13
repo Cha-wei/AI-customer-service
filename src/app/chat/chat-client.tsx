@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type Message = { id: string; role: string; content: string };
 type History = { id: string; status: string; messages: Message[]; nextCursor: string | null };
@@ -16,6 +16,17 @@ export default function ChatClient() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const previousHeight = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    if (previousHeight.current !== null) {
+      list.scrollTop += list.scrollHeight - previousHeight.current;
+      previousHeight.current = null;
+    } else if (followLatest.current) list.scrollTop = list.scrollHeight;
+  }, [history]);
   const generation = useRef(0);
   const sending = useRef(false);
   const pageRef = useRef(1);
@@ -99,6 +110,7 @@ export default function ChatClient() {
   }, [refreshInbox, signedOut]);
   function select(id: string | null) {
     generation.current++;
+    followLatest.current = true; previousHeight.current = null;
     setSelected(id); setHistory(null); setError(""); setContent(""); setOrderId("");
   }
   async function older() {
@@ -107,13 +119,17 @@ export default function ChatClient() {
     setLoadingOlder(true);
     try {
       const data: History = await api(`?id=${encodeURIComponent(history.id)}&before=${encodeURIComponent(history.nextCursor)}`);
-      if (current === generation.current) setHistory(previous => previous && ({ ...previous, messages: [...data.messages.filter(m => !previous.messages.some(p => p.id === m.id)), ...previous.messages], nextCursor: data.nextCursor }));
+      if (current === generation.current) {
+        previousHeight.current = listRef.current?.scrollHeight ?? null;
+        setHistory(previous => previous && ({ ...previous, messages: [...data.messages.filter(m => !previous.messages.some(p => p.id === m.id)), ...previous.messages], nextCursor: data.nextCursor }));
+      }
     } catch (e) { setError((e as Error).message); }
     finally { setLoadingOlder(false); }
   }
   async function send(event: React.FormEvent) {
     event.preventDefault();
     if (sending.current || !content.trim() || (refund && !orderId)) return;
+    followLatest.current = true;
     sending.current = true; setBusy(true); setError("");
     try {
       const result = await api("", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...(selected ? { conversationId: selected } : {}), content, ...(refund ? { orderId } : {}) }) });
@@ -127,14 +143,15 @@ export default function ChatClient() {
   }
   const locked = signedOut || busy || !inbox || (!!selected && (!history || (history.status !== "open" && !human) || history.messages.at(-1)?.role === "customer"));
   return <div className="chat-grid"><aside className="panel chat-sidebar"><h2>我的会话</h2><button className="secondary-button" onClick={logout}>退出登录</button><button disabled={busy} onClick={() => select(null)}>新建会话</button>
-    {!inbox && <p>正在加载客户会话…</p>}
+    {!inbox && <p>{signedOut ? "登录已结束，请重新登录后查看会话。" : error ? "客户会话加载失败，请重新加载。" : "正在加载客户会话…"}</p>}
     {inbox?.conversations.length === 0 && <p className="muted">还没有会话，发送消息开始咨询。</p>}
     {inbox?.conversations.map(c => <button className="chat-conversation secondary-button" aria-pressed={selected === c.id} disabled={busy} key={c.id} onClick={() => select(c.id)}>{c.latestMessage?.content ?? "客服会话"}</button>)}
     {inbox && <nav aria-label="会话分页"><button className="secondary-button" disabled={busy || inbox.page <= 1} onClick={() => refreshInbox(inbox.page - 1).catch(e => setError(e.message))}>上一页</button><span> {inbox.page} </span><button className="secondary-button" disabled={busy || inbox.page * inbox.pageSize >= inbox.total} onClick={() => refreshInbox(inbox.page + 1).catch(e => setError(e.message))}>下一页</button></nav>}
   </aside><section className="panel"><div className="panel-heading"><h2>客服消息</h2><span role="status">{human && history?.messages.at(-1)?.role === "human" ? "人工客服已回复，可以继续留言" : human && history?.messages.at(-1)?.role === "customer" ? "等待人工客服回复" : history ? statuses[history.status] : selected ? "正在加载历史…" : "新的咨询"}</span></div>
     {signedOut && <p><a href="/chat/login">重新登录</a></p>}
     {error && <div className="form-error" role="alert">{error} <button className="secondary-button" onClick={() => { setError(""); refreshInbox().catch(e => setError(e.message)); }}>重新加载</button></div>}
-    <div className="message-list chat-messages" aria-label="消息历史" aria-live="polite">{history?.nextCursor && <button disabled={loadingOlder} className="secondary-button" onClick={older}>{loadingOlder ? "加载中…" : "加载更早消息"}</button>}
+    {history && <button className="secondary-button" onClick={() => { followLatest.current = true; if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; }}>查看最新消息</button>}
+    <div ref={listRef} onScroll={event => { const list = event.currentTarget; followLatest.current = list.scrollHeight - list.scrollTop - list.clientHeight < 40; }} className="message-list chat-messages" aria-label="消息历史" aria-live="polite">{history?.nextCursor && <button disabled={loadingOlder} className="secondary-button" onClick={older}>{loadingOlder ? "加载中…" : "加载更早消息"}</button>}
       {!selected && <p className="muted">您好！可以询问订单物流，或选择订单申请退款。</p>}
       {history?.messages.map(m => <article key={m.id} className={`message message-${m.role}`}><div className="message-meta">{m.role === "customer" ? "我" : m.role === "agent" ? "AI 客服" : m.role === "human" ? "人工客服" : "服务通知"}</div><p>{m.content}</p></article>)}
     </div><form className="chat-composer" onSubmit={send}><div><button type="button" className="secondary-button" disabled={locked} onClick={() => setContent("我的订单什么时候到？")}>查询订单</button> <button type="button" className="secondary-button" disabled={locked} onClick={() => setContent("申请退款")}>申请退款</button></div>

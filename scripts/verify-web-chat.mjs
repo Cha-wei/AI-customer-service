@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomBytes, createHash, createHmac, X509Certificate } from 'node:crypto';
-import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, readFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
@@ -135,6 +135,14 @@ try {
   await expect(page.getByLabel('消息历史')).toContainText('MOCK1001');
   const login = await request('/api/admin/session', { method: 'POST', headers: { origin }, body: new URLSearchParams({ password }) });
   const adminCookie = login.headers.get('set-cookie').split(';')[0];
+  const staffContext = await browser.newContext();
+  const staff = await staffContext.newPage();
+  staff.on('pageerror', error => browserErrors.push(error.message));
+  await staff.goto(origin + '/login');
+  await staff.getByLabel('管理密码').fill(password);
+  await staff.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(staff).toHaveURL(origin + '/');
+
   for (const [orderId, decision, expectedText] of [['order-1001', 'approve', '已完成 Mock 退款'], ['order-1002', 'reject', '未执行退款']]) {
     if (decision === 'reject') await page.getByRole('button', { name: '新建会话' }).click();
     await page.getByRole('button', { name: '申请退款', exact: true }).click();
@@ -145,8 +153,9 @@ try {
     const approval = await client.approval.findFirstOrThrow({ where: { orderId, status: 'pending' } });
     assert.equal(await client.mockRefund.count({ where: { orderId } }), 0);
     assert.equal((await post({ content: '订单', conversationId: approval.conversationId })).status, 409);
-    const res = await request(`/api/admin/conversations/${approval.conversationId}/approvals`, { method: 'POST', headers: { origin, cookie: adminCookie }, body: new URLSearchParams({ approvalId: approval.id, decision }) });
-    assert.equal(res.status, 303);
+    await staff.goto(`${origin}/conversations/${approval.conversationId}`);
+    await staff.getByRole('button', { name: decision === 'approve' ? '批准退款' : '拒绝退款', exact: true }).click();
+    await expect(staff.getByRole('button', { name: '批准退款', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('消息历史')).toContainText(expectedText, { timeout: 10000 });
     await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
   }
@@ -167,20 +176,28 @@ try {
   await expect(page.getByRole('status')).toContainText('等待人工客服回复');
   const handoff = await client.conversation.findFirstOrThrow({ where: { customerId: 'customer-1', status: 'human_handoff' }, orderBy: { updatedAt: 'desc' } });
   const executionCount = await client.runtimeExecution.count({ where: { conversationId: handoff.id } });
-  const staffContext = await browser.newContext();
-  const staff = await staffContext.newPage();
-  await staff.goto(origin + '/login');
-  await staff.getByLabel('管理密码').fill(password);
-  await staff.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(staff).toHaveURL(origin + '/');
+  // Populate a long history to verify actual viewport visibility, not just DOM text.
+  await client.message.createMany({ data: Array.from({ length: 14 }, (_, i) => ({ conversationId: handoff.id, role: 'system', content: `演示历史 ${i + 1}：这是用于检查滚动位置的历史消息。`, createdAt: new Date(handoff.createdAt.getTime() - 15000 + i * 100) })) });
+  await page.reload();
+  await page.locator('.chat-conversation').first().click();
+  await expect(page.getByRole('status')).toContainText('等待人工客服回复');
+  const atBottom = locator => locator.evaluate(element => element.scrollHeight - element.scrollTop - element.clientHeight < 8);
+  await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
+  await staff.goto(origin + '/');
   await staff.getByRole('combobox').selectOption('human_handoff');
   await staff.getByRole('button', { name: '筛选', exact: true }).click();
   await staff.locator(`a[href="/conversations/${handoff.id}"]`).click();
   await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
   const beforeReply = await client.message.findFirstOrThrow({ where: { conversationId: handoff.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
   await staff.getByLabel('人工回复', { exact: true }).fill('您好，人工客服已接手，请说明问题。');
+  await staff.route(`**/api/admin/conversations/${handoff.id}/messages`, route => route.request().method() === 'POST' ? route.abort() : route.continue());
+  await staff.getByRole('button', { name: '发送人工回复' }).click();
+  await expect(staff.locator('.form-error')).toBeVisible();
+  await expect(staff.getByLabel('人工回复', { exact: true })).toHaveValue('您好，人工客服已接手，请说明问题。');
+  await staff.unroute(`**/api/admin/conversations/${handoff.id}/messages`);
   await staff.getByRole('button', { name: '发送人工回复' }).click();
   await expect(page.getByLabel('消息历史')).toContainText('人工客服已接手');
+  await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
   const humanPost = (activeCookie, activeOrigin = origin) => request(`/api/admin/conversations/${handoff.id}/messages`, { method: 'POST', headers: { cookie: activeCookie, origin: activeOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ content: 'duplicate', lastMessageId: beforeReply.id }) });
   assert.equal((await humanPost(adminCookie)).status, 409, 'repeated reply denied');
   assert.equal((await humanPost(cookie)).status, 307, 'customer cannot send staff reply');
@@ -190,17 +207,27 @@ try {
   await expect(page.getByLabel('请选择退款订单（必选）')).toHaveCount(0);
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(staff.locator('.message-list')).toContainText('退款原因是包装损坏');
+  await expect.poll(() => atBottom(staff.locator('.message-list'))).toBe(true);
   assert.equal((await post({ conversationId: handoff.id, content: '重复留言' })).status, 409);
   assert.equal(await client.runtimeExecution.count({ where: { conversationId: handoff.id } }), executionCount, 'no AI in human mode');
   assert.equal(await client.approval.count({ where: { conversationId: handoff.id } }), 0, 'human text creates no refund approval');
+  // Reading old history must not be interrupted by an incoming reply.
+  await page.getByLabel('消息历史').evaluate(element => { element.scrollTop = 0; element.dispatchEvent(new Event('scroll')); });
   await staff.getByLabel('人工回复', { exact: true }).fill('已记录您的问题，本次咨询处理完成。');
   await staff.getByRole('button', { name: '发送人工回复' }).click();
   await expect(page.getByLabel('消息历史')).toContainText('本次咨询处理完成');
+  assert.equal(await page.getByLabel('消息历史').evaluate(element => element.scrollTop), 0, 'reading position retained');
+  await page.getByRole('button', { name: '查看最新消息', exact: true }).click();
+  await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
+
   await staff.getByRole('button', { name: '标记已解决' }).click();
   await expect(page.getByRole('status')).toContainText('会话已解决');
   await expect(page.getByLabel('消息', { exact: true })).toBeDisabled();
   assert.equal((await post({ conversationId: handoff.id, content: 'late customer reply' })).status, 409);
   assert.equal((await humanPost(adminCookie)).status, 409);
+  await mkdir('.next/acceptance', { recursive: true });
+  await page.screenshot({ path: '.next/acceptance/customer.png', fullPage: true });
+  await staff.screenshot({ path: '.next/acceptance/admin.png', fullPage: true });
   await staffContext.close();
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile overflow');
