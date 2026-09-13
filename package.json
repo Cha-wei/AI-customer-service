@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "customer:account": "node scripts/customer-account.mjs",
+    "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "test": "cross-env DATABASE_URL=file:./test.db vitest run",

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomBytes, createHash, X509Certificate } from 'node:crypto';
+import { randomBytes, createHash, createHmac, X509Certificate } from 'node:crypto';
 import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve, relative, isAbsolute } from 'node:path';
@@ -15,6 +15,8 @@ const directory = await mkdtemp(join(tmpdir(), 'web-chat-'));
 const secret = () => randomBytes(32).toString('hex');
 const token = secret();
 const password = secret();
+const customerPassword = secret();
+const resetPassword = secret();
 const env = { ...process.env, DATABASE_URL: `file:${join(directory, 'test.db').replaceAll('\\', '/')}`,
   WEB_CHAT_SESSION_SECRET: secret(), ADMIN_UI_SESSION_SECRET: secret(), ADMIN_UI_PASSWORD: password,
   INTERNAL_API_TOKENS: JSON.stringify([{ token, role: 'operator' }]), INTENT_PROVIDER: 'rule',
@@ -25,6 +27,9 @@ const useHttps = process.argv.includes('--https');
 try {
   await client.$executeRawUnsafe('PRAGMA user_version = 0');
   execFileSync(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy'], { env, stdio: 'pipe', windowsHide: true });
+  for (const [name, customerId] of [['alice', 'customer-1'], ['bob', 'customer-2']]) {
+    execFileSync(process.execPath, ['scripts/customer-account.mjs', 'create', name, customerId], { env: { ...env, CUSTOMER_ACCOUNT_PASSWORD: customerPassword }, stdio: 'pipe', windowsHide: true });
+  }
   const probe = createServer();
   await new Promise(r => probe.listen(0, '127.0.0.1', r));
   const port = probe.address().port;
@@ -73,16 +78,39 @@ try {
     await new Promise(r => setTimeout(r, 500));
   }
   assert(ready, 'server startup');
-  const operator = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
-  const session = async customerId => {
-    const res = await request('/api/internal/web-chat/session', { method: 'POST', headers: operator, body: JSON.stringify({ customerId }) });
-    assert.equal(res.status, 200);
-    const header = res.headers.get('set-cookie');
-    assert(header.includes('HttpOnly') && header.includes('Secure') && header.includes('SameSite=strict'));
-    return header.split(';')[0];
+  browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}), headless: true, ...(spki ? { args: [`--ignore-certificate-errors-spki-list=${spki}`] } : {}) });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const browserErrors = [];
+  context.on('page', tab => tab.on('pageerror', error => browserErrors.push(error.message)));
+  page.on('pageerror', error => browserErrors.push(error.message));
+  context.on('request', req => {
+    assert(!req.headers().authorization, 'browser must not send internal credentials');
+    assert(!req.url().includes('/api/internal/'), 'browser must use the customer boundary');
+  });
+  const loginAs = async (tab, loginName, activePassword = customerPassword) => {
+    await tab.goto(origin + '/chat/login');
+    await tab.getByLabel('账号', { exact: true }).fill(loginName);
+    await tab.getByLabel('密码', { exact: true }).fill(activePassword);
+    await tab.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(tab).toHaveURL(origin + '/chat');
+    const session = (await tab.context().cookies()).find(c => c.name === 'customer_session');
+    assert(session.httpOnly && session.secure && session.sameSite === 'Strict');
+    return `customer_session=${session.value}`;
   };
-  const cookie = await session('customer-1');
-  const otherCookie = await session('customer-2');
+  // Both customers authenticate through the visible form; no cookie injection.
+  const otherContext = await browser.newContext();
+  const otherPage = await otherContext.newPage();
+  const otherCookie = await loginAs(otherPage, 'bob');
+  let cookie = await loginAs(page, 'alice');
+  const customerApproval = await request('/api/admin/conversations/foreign/approvals', { method: 'POST', headers: { origin, cookie }, body: new URLSearchParams({ approvalId: 'foreign', decision: 'approve' }) });
+  assert.equal(customerApproval.status, 307);
+  assert(customerApproval.headers.get('location').endsWith('/login'));
+  const expiredData = JSON.parse(Buffer.from(cookie.split('=')[1].split('.')[0], 'base64url').toString());
+  expiredData.expires = Date.now() - 1000;
+  const expiredPayload = Buffer.from(JSON.stringify(expiredData)).toString('base64url');
+  const expiredCookie = `customer_session=${expiredPayload}.${createHmac('sha256', env.WEB_CHAT_SESSION_SECRET).update(expiredPayload).digest('base64url')}`;
+  assert.equal((await request('/api/chat', { headers: { cookie: expiredCookie } })).status, 401, 'expired authenticated session rejected');
   assert.equal((await request('/api/chat')).status, 401);
   assert.equal((await request('/api/chat', { headers: { cookie: cookie + 'x' } })).status, 401);
   assert.equal((await request('/api/internal/web-chat/session', { method: 'POST' })).status, 401);
@@ -92,17 +120,6 @@ try {
   assert.equal((await post({ content: '退款' })).status, 400);
   assert.equal((await post({ content: '退款', orderId: 'order-1001' }, otherCookie)).status, 400);
   assert.equal((await post({ content: '订单' }, cookie, 'https://evil.example')).status, 403);
-  browser = await chromium.launch({ ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}), headless: true, ...(spki ? { args: [`--ignore-certificate-errors-spki-list=${spki}`] } : {}) });
-  const context = await browser.newContext();
-  await context.addCookies([{ name: 'customer_session', value: cookie.slice('customer_session='.length), url: origin, httpOnly: true, secure: true, sameSite: 'Strict' }]);
-  const page = await context.newPage();
-  const browserErrors = [];
-  page.on('pageerror', error => browserErrors.push(error.message));
-  page.on('request', req => {
-    assert(!req.headers().authorization, 'browser must not send internal credentials');
-    assert(!req.url().includes('/api/internal/'), 'browser must use the customer boundary');
-  });
-  await page.goto(origin + '/chat');
   await expect(page.getByRole('button', { name: '查询订单', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '查询订单', exact: true }).click();
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
@@ -145,31 +162,48 @@ try {
   await expect(page.getByLabel('消息历史')).toContainText('MOCK1001');
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile overflow');
-  // Simulate the host replacing the customer cookie while the old account page stays open.
+  // A second tab logs in as another customer while the first retains an old draft.
   await page.getByRole('button', { name: '新建会话' }).click();
   await page.getByLabel('消息', { exact: true }).fill('private previous account draft');
-  await context.addCookies([{ name: 'customer_session', value: otherCookie.slice('customer_session='.length), url: origin, httpOnly: true, secure: true, sameSite: 'Strict' }]);
+  const switchTab = await context.newPage();
+  await loginAs(switchTab, 'bob');
+  assert.equal((await request('/api/chat', { headers: { cookie } })).status, 401, 'account switch revokes old cookie');
   await expect(page.locator('.form-error')).toContainText('账号已切换', { timeout: 10000 });
   await expect(page.getByLabel('消息', { exact: true })).toHaveValue('');
   await expect(page.getByLabel('消息历史')).not.toContainText('MOCK1001');
   await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
-  await context.addCookies([{ name: 'customer_session', value: cookie.slice('customer_session='.length), url: origin, httpOnly: true, secure: true, sameSite: 'Strict' }]);
-  await page.reload();
+  await switchTab.close();
+  cookie = await loginAs(page, 'alice');
   await expect(page.getByRole('button', { name: '查询订单', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
-  await expect(page.locator('.form-error')).toContainText('已退出在线客服');
+  await expect(page).toHaveURL(origin + '/chat/login');
   assert.equal((await request('/api/chat', { headers: { cookie } })).status, 401, 'revoked cookie replay');
-  await context.clearCookies();
-  await page.reload();
+  execFileSync(process.execPath, ['scripts/customer-account.mjs', 'disable', 'bob'], { env, stdio: 'pipe', windowsHide: true });
+  assert.equal((await request('/api/chat', { headers: { cookie: otherCookie } })).status, 401, 'disabled account loses existing session');
+  const invalidLogin = body => request('/api/chat/session', { method: 'POST', headers: { origin, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const disabled = await invalidLogin({ loginName: 'bob', password: customerPassword });
+  const unknown = await invalidLogin({ loginName: 'unknown', password: customerPassword });
+  assert.equal(disabled.status, 401);
+  assert.equal(await disabled.text(), await unknown.text(), 'no account enumeration');
+  for (let i = 0; i < 4; i++) assert.equal((await invalidLogin({ loginName: 'unknown', password: 'wrong' })).status, 401);
+  assert.equal((await invalidLogin({ loginName: 'unknown', password: 'wrong' })).status, 429);
+  execFileSync(process.execPath, ['scripts/customer-account.mjs', 'enable', 'bob'], { env, stdio: 'pipe', windowsHide: true });
+  assert.equal((await request('/api/chat', { headers: { cookie: otherCookie } })).status, 401, 'reenabling never revives old sessions');
+  const beforeReset = await loginAs(otherPage, 'bob');
+  execFileSync(process.execPath, ['scripts/customer-account.mjs', 'reset-password', 'bob'], { env: { ...env, CUSTOMER_ACCOUNT_PASSWORD: resetPassword }, stdio: 'pipe', windowsHide: true });
+  assert.equal((await request('/api/chat', { headers: { cookie: beforeReset } })).status, 401, 'password reset revokes sessions');
+  assert.equal((await invalidLogin({ loginName: 'bob', password: customerPassword })).status, 401, 'old password rejected');
+  await loginAs(otherPage, 'bob', resetPassword);
+  await page.goto(origin + '/chat');
   await expect(page.locator('.form-error')).toContainText('客户登录已失效');
-  await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
+  await expect(page.getByRole('link', { name: '重新登录', exact: true })).toBeVisible();
   assert.deepEqual(browserErrors, []);
   for (const entry of await readdir('.next/static', { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
     const contents = await readFile(join(entry.parentPath, entry.name), 'utf8');
-    for (const value of [token, password, env.WEB_CHAT_SESSION_SECRET, env.ADMIN_UI_SESSION_SECRET, 'INTERNAL_API_TOKENS', 'WEB_CHAT_SESSION_SECRET']) assert(!contents.includes(value), 'client bundle credential leakage');
+    for (const value of [token, password, customerPassword, resetPassword, env.WEB_CHAT_SESSION_SECRET, env.ADMIN_UI_SESSION_SECRET, 'INTERNAL_API_TOKENS', 'WEB_CHAT_SESSION_SECRET']) assert(!contents.includes(value), 'client bundle credential leakage');
   }
-  console.log(`${useHttps ? 'HTTPS loopback TLS proxy' : 'HTTP loopback'}; ` + 'PASS: real browser order query, reload/history, explicit refund selection, automatic approve/reject updates, failure draft/retry, mobile layout, expired session; HTTP identity isolation/CSRF/state guards; client bundle secret scan.');
+  console.log(`${useHttps ? 'HTTPS loopback TLS proxy' : 'HTTP loopback'}; ` + 'PASS: real customer login, account switch, disable/enable, throttle, logout replay; real browser order query, reload/history, explicit refund selection, automatic approve/reject updates, failure draft/retry, mobile layout, expired session; HTTP identity isolation/CSRF/state guards; client bundle secret scan.');
 } finally {
   await browser?.close();
   if (server && server.exitCode === null) { server.kill(); await new Promise(r => server.once('exit', r)); }

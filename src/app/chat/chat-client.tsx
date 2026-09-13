@@ -37,7 +37,7 @@ export default function ChatClient() {
     const next = response.headers.get("x-chat-account");
     if (response.status === 401 || (next && account.current && next !== account.current)) {
       clearAccount();
-      throw new Error("客户登录已失效或账号已切换，请从已登录的客户入口重新进入。");
+      throw new Error("客户登录已失效或账号已切换，请重新登录。");
     }
     const data = await response.json();
     if (current !== epoch.current) throw new Error("客户会话已变更，请重新加载。");
@@ -55,7 +55,7 @@ export default function ChatClient() {
     try {
       await api("/logout", { method: "POST" });
       try { localStorage.setItem("chat-logout", String(Date.now())); } catch { /* Polling also invalidates other tabs when storage is disabled. */ }
-      setError("已退出在线客服。请从客户登录入口重新进入。");
+      window.location.replace("/chat/login");
     } catch (e) { setError((e as Error).message); }
   }
   useEffect(() => {
@@ -131,6 +131,7 @@ export default function ChatClient() {
     {inbox?.conversations.map(c => <button className="chat-conversation secondary-button" aria-pressed={selected === c.id} disabled={busy} key={c.id} onClick={() => select(c.id)}>{c.latestMessage?.content ?? "客服会话"}</button>)}
     {inbox && <nav aria-label="会话分页"><button className="secondary-button" disabled={busy || inbox.page <= 1} onClick={() => refreshInbox(inbox.page - 1).catch(e => setError(e.message))}>上一页</button><span> {inbox.page} </span><button className="secondary-button" disabled={busy || inbox.page * inbox.pageSize >= inbox.total} onClick={() => refreshInbox(inbox.page + 1).catch(e => setError(e.message))}>下一页</button></nav>}
   </aside><section className="panel"><div className="panel-heading"><h2>客服消息</h2><span role="status">{history ? statuses[history.status] : selected ? "正在加载历史…" : "新的咨询"}</span></div>
+    {signedOut && <p><a href="/chat/login">重新登录</a></p>}
     {error && <div className="form-error" role="alert">{error} <button className="secondary-button" onClick={() => { setError(""); refreshInbox().catch(e => setError(e.message)); }}>重新加载</button></div>}
     <div className="message-list chat-messages" aria-label="消息历史" aria-live="polite">{history?.nextCursor && <button disabled={loadingOlder} className="secondary-button" onClick={older}>{loadingOlder ? "加载中…" : "加载更早消息"}</button>}
       {!selected && <p className="muted">您好！可以询问订单物流，或选择订单申请退款。</p>}

@@ -9,10 +9,10 @@ function sign(value: string) {
   if (!secret || secret.length < 32) throw new AccessError(503, "auth_unconfigured");
   return createHmac("sha256", secret).update(value).digest("base64url");
 }
-// Called only after the host application's server has authenticated the customer.
-export function createCustomerSession(customerId: string, now = Date.now()) {
+// Called only after local password verification or privileged host authentication.
+export function createCustomerSession(customerId: string, now = Date.now(), account?: { id: string; version: number }) {
   if (!customerId.trim() || customerId !== customerId.trim() || customerId.length > 128) throw new AccessError(401, "unauthorized");
-  const payload = Buffer.from(JSON.stringify({ customerId, nonce: randomUUID(), expires: now + 8 * 3600_000 })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ customerId, account, nonce: randomUUID(), expires: now + 8 * 3600_000 })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 export function verifyCustomerSession(value: string | undefined, now = Date.now()): string {
@@ -30,6 +30,10 @@ export async function customerIdentity() {
   const value = (await cookies()).get(CUSTOMER_COOKIE)?.value;
   const identity = verifyCustomerSession(value);
   if (await prisma.revokedCustomerSession.findUnique({ where: { digest: sessionDigest(value!) } })) throw new AccessError(401, "unauthorized");
+  const { account } = JSON.parse(Buffer.from(value!.split(".")[0], "base64url").toString());
+  const stored = await prisma.customerAccount.findUnique({ where: { customerId: identity } });
+  if (stored && !stored.enabled) throw new AccessError(401, "unauthorized");
+  if (account && (!stored || account.id !== stored.id || account.version !== stored.sessionVersion)) throw new AccessError(401, "unauthorized");
   return identity;
 }
 

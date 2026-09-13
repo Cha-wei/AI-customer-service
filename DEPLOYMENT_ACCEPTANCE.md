@@ -1,57 +1,53 @@
-# Web Chat login and deployment acceptance
+# MVP customer login acceptance
 
-## Current identity boundary
+## Implemented identity source
 
-The repository has operator/customer Internal API credentials and a separate shared
-admin password. Neither authenticates a real end customer in a browser. Customer
-Context and orders are Mock providers. There is no customer account database, OIDC
-configuration, trusted host login implementation, or saved remote deployment target.
+`/chat/login` submits only a login name and password to `/api/chat/session`. The
+server verifies a salted scrypt hash in CustomerAccount, checks enabled state and
+Customer Context existence, and uses the stored customerId mapping. It directly
+issues the existing signed HttpOnly cookie; no internal token enters the browser.
+Local-account cookies include account ID and session version. Password reset,
+disable and enable increment the version. Every chat request rechecks the account.
+Operator credentials and the separate admin login remain privileged; a customer
+session cannot approve refunds or provision another identity.
 
-The only existing trusted issuer is the authenticated host server calling
-`POST /api/internal/web-chat/session` with an operator token. It must derive
-`customerId` from its verified login context and a server-maintained mapping to
-Customer Context. A submitted customer ID, email, URL parameter, or browser header
-is not sufficient evidence of identity. The account discriminator used by chat
-requests only prevents stale drafts; it cannot issue a session.
+The account management CLI validates mappings against the current Mock customer
+provider, enforces unique names/customer mappings and never prints passwords.
+The README documents creation and maintenance commands. Accounts are not seeded
+automatically into production. There is no public registration or password reset.
 
-Before real-login acceptance, supply the host login implementation or identity
-provider configuration, stable subject-to-customer mapping, callback/public origin,
-and test accounts representing two different customers. Keep operator and provider
-credentials in server environment configuration. The host must forward Set-Cookie
-only to the corresponding authenticated browser on the chat origin, revoke the
-previous chat cookie before account replacement, and coordinate host logout.
-The chat logout endpoint does not log out an upstream identity provider.
+## Local HTTPS acceptance
 
-## Deployment prerequisites
+Run `pnpm build`, then `pnpm test:e2e:chat:https`, using PowerShell 7, Node.js 22.18+
+and Playwright Chromium or `PLAYWRIGHT_CHANNEL=msedge`. The harness migrates a
+fresh disposable SQLite database and creates alice/customer-1 and bob/customer-2
+through the management CLI, with generated temporary passwords. Both authenticate
+through the actual browser login form; normal login does not inject cookies.
 
-1. Provide the HTTPS staging address and authorized deployment mechanism.
-2. Use a single persistent server/database for this SQLite MVP. Back up the database,
-   install dependencies, run `pnpm db:generate`, and apply
-   `pnpm exec prisma migrate deploy` before starting the new build.
-3. Configure `DATABASE_URL`, `WEB_CHAT_SESSION_SECRET`, `INTERNAL_API_TOKENS`,
-   `ADMIN_UI_PASSWORD`, `ADMIN_UI_SESSION_SECRET`, and the exact HTTPS `APP_ORIGIN`
-   in the deployment secret store. Signing secrets must be independent.
-4. Run `pnpm build` and `pnpm start` behind the HTTPS proxy. Restrict direct access
-   to the upstream HTTP port. Do not cache authenticated API responses.
-5. Test actual host login, expiry, logout/replay, account switching and two-customer
-   isolation. Query orders and approve/reject a Mock refund through the admin UI.
-   Verify browser requests, responses and bundles contain no internal credentials.
+A loopback TLS proxy uses an ephemeral one-hour localhost certificate. The HTTP
+client trusts that certificate explicitly and the browser permits only its generated
+public-key fingerprint; no machine-wide trust or certificate bypass is installed.
+The test removes its database and private key on exit. This needs no server or domain.
 
-## Verification performed / remaining
+Acceptance covers order queries and persisted history, explicit refund selection,
+admin approve/reject and customer polling, customer separation and denied customer
+approval, account switching across tabs with draft clearing, revocation on switch
+and logout, disabled accounts and old sessions after re-enable, uniform invalid-login
+responses, login throttling, and browser bundle credential scans. Unit tests also
+cover expiry, changed account mappings/versions and storage failure.
 
-The automated HTTPS harness (`pnpm test:e2e:chat:https`) starts an isolated production
-Next server behind a loopback TLS proxy, migrates a disposable database and generates
-temporary credentials. It requires PowerShell 7 and Playwright Chromium (or
-`PLAYWRIGHT_CHANNEL=msedge`). It generates a one-hour localhost certificate without
-installing trust globally. The HTTP test client trusts that certificate explicitly;
-the test browser permits only its generated public-key fingerprint. Temporary keys
-and database are removed on exit. No real customer data or payment operation is used.
+Orders and refunds remain Mock operations; there is no real money movement.
 
-Checks include browser order query/history, explicit refund selection, admin
-approve/reject and customer result polling, cross-customer reads/writes/order access,
-account-switch cleanup, logout cookie replay rejection, and browser bundle credential
-scanning. Unit tests cover expiration, revocation failure and stale-account POSTs.
+## Future external trial
 
-This is local HTTPS transport acceptance. Remote deployment, public certificate/DNS,
-real customer login callbacks, subject mapping and upstream logout remain unverified
-until the missing environment and identity configuration are supplied.
+External deployment is outside this local phase. When needed, use one persistent
+server/database behind HTTPS, back up SQLite, run `pnpm db:generate` and
+`pnpm db:migrate`, then build/start. Configure independent server
+secrets and an exact HTTPS APP_ORIGIN, restrict access to the upstream HTTP port,
+and disable caching of authenticated responses. Recheck public certificates, DNS,
+proxy origin behavior and browser login in that environment.
+
+The in-memory login budget resets on restart and is shared only within one process.
+Distributed deployments require a shared limiter and a database topology change.
+The optional host-issued Internal API sessions remain a separate privileged path;
+local password version changes apply to local-account sessions only.

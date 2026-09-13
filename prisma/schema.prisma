@@ -7,6 +7,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model CustomerAccount {
+  id String @id @default(cuid())
+  loginName String @unique
+  passwordHash String
+  customerId String @unique
+  enabled Boolean @default(true)
+  sessionVersion Int @default(1)
+}
+
 model RevokedCustomerSession {
   digest String @id
   expiresAt DateTime

@@ -150,16 +150,19 @@ Approval
 ## 8. Web Chat 渠道边界
 
 `/chat` 客户端通过同源 `/api/chat` 访问服务。独立的 `web-chat/session`
-从签名 HttpOnly Cookie 解析客户身份；会话只能由已认证的宿主服务端通过
-operator 保护的 Internal API 签发，浏览器不能自行指定客户身份。
+从签名 HttpOnly Cookie 解析客户身份。`customer-auth` 验证本地账号密码，
+从 CustomerAccount 读取固定 customerId 映射并直接签发会话。可信宿主仍可通过
+operator 保护的 Internal API 签发；浏览器不能自行指定客户身份。
 `web-chat/service` 校验会话和退款订单归属、串行追加客户消息，再调用现有
 Conversation Service / Agent Runtime。退款继续经过现有 Policy / Approval，
 不复制业务逻辑。客户端轮询客户范围内的消息接口读取审批结果，不读取内部执行诊断。
 
 退出将 Cookie 摘要写入 SQLite 撤销表，后续认证同时验证签名、过期时间和撤销状态。
 每次签发使用独立 nonce。客户端通过账户标识绑定草稿；服务端在发送前校验其与
-Cookie 身份一致，避免账号切换污染新账号。真实客户身份仍需可信宿主登录系统提供，
-当前仓库没有实现该宿主。TLS 终止代理通过固定 APP_ORIGIN 配置同源校验。
+Cookie 身份一致，避免账号切换污染新账号。本地账号 Cookie 还绑定账号 ID 和版本，
+每次访问检查启用状态和版本；密码重置、停用/启用会递增版本。密码使用随机盐的
+scrypt 哈希，账号通过本地服务端脚本维护。此模块不侵入 Runtime；业务数据仍由
+Mock Customer Context 提供。TLS 终止代理通过固定 APP_ORIGIN 配置同源校验。
 
 ## 9. 设计决策优先级
 出现多个方案时，优先级为：

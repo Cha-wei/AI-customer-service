@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { createCustomerSession, customerIdentity, revokeCustomerSession } from "./session";
-const m = vi.hoisted(() => ({ cookie: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() }));
+const m = vi.hoisted(() => ({ cookie: vi.fn(), account: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: m.cookie }) }));
-vi.mock("@/lib/prisma", () => ({ prisma: { revokedCustomerSession: { findUnique: m.findUnique, upsert: m.upsert } } }));
+vi.mock("@/lib/prisma", () => ({ prisma: { customerAccount: { findUnique: m.account }, revokedCustomerSession: { findUnique: m.findUnique, upsert: m.upsert } } }));
 beforeEach(() => { vi.resetAllMocks(); vi.stubEnv("WEB_CHAT_SESSION_SECRET", "session-test-".repeat(4)); });
 afterEach(() => vi.unstubAllEnvs());
 it("persists only a digest and rejects replay of a revoked cookie", async () => {
@@ -24,4 +24,15 @@ it("fails closed when revocation storage is unavailable", async () => {
   m.cookie.mockReturnValue({ value: createCustomerSession("customer-1") });
   m.findUnique.mockRejectedValue(new Error("unavailable"));
   await expect(customerIdentity()).rejects.toThrow();
+});
+
+it("invalidates disabled, removed, remapped and version-changed accounts", async () => {
+  m.cookie.mockReturnValue({ value: createCustomerSession("customer-1", Date.now(), { id: "a1", version: 1 }) });
+  const account = { id: "a1", enabled: true, sessionVersion: 1 };
+  m.account.mockResolvedValue(account);
+  expect(await customerIdentity()).toBe("customer-1");
+  for (const data of [null, { ...account, enabled: false }, { ...account, id: "a2" }, { ...account, sessionVersion: 2 }]) {
+    m.account.mockResolvedValue(data);
+    await expect(customerIdentity()).rejects.toMatchObject({ status: 401 });
+  }
 });

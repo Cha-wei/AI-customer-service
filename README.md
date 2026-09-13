@@ -2,64 +2,80 @@
 
 ## Customer Web Chat
 
-Visit `/chat` for customer order queries, explicit refund order selection, conversation
-history (20 conversations and 50 messages per page), and automatic approval updates
-every 2.5 seconds. Refunds reuse the existing Runtime, Policy and admin approval
-flow. Processing, pending approval, handoff and resolved conversations disable sending;
-customers can start a new conversation. Refunds remain Mock operations.
+Customers sign in at `/chat/login` using a local account and password. The server
+verifies the salted scrypt hash, reads the account's fixed `customerId` mapping from
+SQLite and directly signs an HttpOnly session cookie. Browser-submitted identities
+and roles cannot grant access. Customer credentials do not grant admin access.
+Orders and refunds remain Mock data/operations.
 
-Set `WEB_CHAT_SESSION_SECRET` to an independent random server-only value of at least
-32 characters. The hosting application's authenticated server calls
-`POST /api/internal/web-chat/session` with its operator Bearer credential and
-`{ "customerId": "customer-1" }`, using the identity from its authenticated customer
-context. It forwards the returned `Set-Cookie` header to that customer's browser
-on the same origin, then redirects to `/chat`. Never call this provisioning endpoint
-from browser JavaScript or derive its customer ID from unverified browser input.
-There is intentionally no public customer-ID picker or default shared demo identity.
+Use Node.js 22.18+ for the account-management and acceptance scripts. Set an
+independent random `WEB_CHAT_SESSION_SECRET` (32+ characters) in ignored `.env`, then
+apply migrations and create two accounts. Passwords are supplied through a temporary
+process environment variable, never command-line arguments or checked-in files:
 
-The signed customer cookie expires after eight hours and is HttpOnly, SameSite=Strict
-and Secure in production (HTTPS required). Missing, expired or altered cookies deny
-access. Rotating the signing secret invalidates all customer sessions. This is an
-MVP host-login integration, not a new account/password system. Browser requests only
-use `/api/chat`; no internal API token is bundled or sent by the client. Each read/write
-checks the cookie identity and conversation ownership; body identity/role overrides
-are rejected, foreign conversations return 404, and writes require same Origin.
-Preserve the public Host/protocol through the reverse proxy.
+```powershell
+pnpm db:generate
+pnpm db:migrate
+$env:CUSTOMER_ACCOUNT_PASSWORD = Read-Host "Password for alice (12–128 characters)" -MaskInput
+pnpm customer:account create alice customer-1
+$env:CUSTOMER_ACCOUNT_PASSWORD = Read-Host "Password for bob (12–128 characters)" -MaskInput
+pnpm customer:account create bob customer-2
+Remove-Item Env:CUSTOMER_ACCOUNT_PASSWORD
+pnpm dev
+```
 
-Session lifecycle hardening: every issuance has a unique nonce. `POST /api/chat/logout`
-requires the same Origin, durably revokes the current cookie digest in SQLite, and
-deletes the browser cookie. Replayed revoked cookies are rejected, including after
-restart. Apply migrations before deploying. Expired revocation rows can be deleted
-after `expiresAt`; they contain no raw cookies. Logout ends this browser session,
-not all customer devices or the upstream identity-provider session.
+The current provider contains `customer-1` (two orders) and `customer-2` (no orders).
+A login name and customer mapping must each be unique. Names are normalized to
+lowercase and contain 3–64 ASCII letters, digits, dots, underscores or hyphens,
+starting with a letter or digit. There is no self-registration or account-management
+UI. For operator maintenance:
 
-The chat binds POST drafts to the account key returned by GET in `X-Chat-Account`.
-This key is a public account discriminator, not an authentication credential; the
-HttpOnly cookie remains authoritative. On 401 or a changed account, the UI clears
-history, orders and drafts and discards in-flight responses. Account changes are
-checked every 2.5 seconds and on focus; logout also signals other same-origin tabs.
-The host must revoke the previous chat session before replacing its login identity,
-and coordinate upstream logout. Real host-login integration is still required.
+```powershell
+pnpm customer:account disable alice
+pnpm customer:account enable alice
+# Supply CUSTOMER_ACCOUNT_PASSWORD as above before resetting a password.
+pnpm customer:account reset-password alice
+```
 
-For TLS termination, set server-only `APP_ORIGIN=https://your-test-host` (exact origin,
-no trailing slash). Origin checks use this configured value instead of trusting
-forwarded headers. Keep the Next server reachable only from the reverse proxy and
-persist the SQLite database across restarts. See `DEPLOYMENT_ACCEPTANCE.md` for
-the integration prerequisites and current acceptance limits.
+Disabling, enabling and password resets increment the account's session version,
+so old local-account cookies never revive. Each authenticated chat request checks
+the account is still enabled and the mapping/version still matches. Login revokes
+the previous browser session before replacing it. Logout durably stores only the
+cookie digest and returns to `/chat/login`; replayed cookies are denied. Expired
+revocation rows can be removed after `expiresAt`. Sessions expire after eight hours;
+there is no automatic refresh. A 401 or changed account clears messages, orders and
+drafts, discards in-flight responses and offers a login link. Same-origin tabs check
+account changes every 2.5 seconds and on focus; logout also broadcasts a storage event.
 
-Send failures retain the draft. If a message was saved but runtime processing failed,
-the API returns its conversation ID and a warning so the customer can inspect history.
-Network timeouts can have an uncertain outcome: refresh history before manually
-resending. No automatic message or refund retry occurs. Concurrent messages on one
-conversation are serialized against the unanswered message and conversation state.
-Existing internal runtime recovery handles interrupted processing.
+Login returns the same invalid-credential message for wrong passwords, unknown and
+disabled accounts. Password hashing is asynchronous. The single-process limiter
+permits five attempts per normalized name and fifty total attempts per 15 minutes;
+success resets only the name budget. Restarting clears these budgets. This is a
+single-instance MVP, not a distributed authentication system.
 
-After `pnpm build`, run `pnpm test:e2e:chat` with Playwright Chromium installed
-(`node node_modules/@playwright/test/cli.js install chromium`). Alternatively set
-`PLAYWRIGHT_CHANNEL=msedge` or `chrome` to use an installed browser. The script starts
-an isolated production server, creates temporary credentials/database, runs actual
-browser order/refund interactions and admin approval HTTP forms, and cleans up.
-It does not use local customer data or call an external model.
+Visit `/chat` for order queries, explicit refund selection, paginated history and
+approval updates. `X-Chat-Account` binds drafts to the account that loaded them; it
+is public metadata, not a credential. Authorization always comes from the HttpOnly
+cookie and server-side ownership checks. Refunds reuse Runtime/Policy/Approval;
+network failures retain drafts without automatic retries.
+
+The operator-protected `/api/internal/web-chat/session` remains an optional trusted
+host integration. Its caller must derive identity from a verified server context.
+Local login does not call it or expose an Internal API token. Existing host cookies
+are privileged host-issued sessions, independent of local password versions;
+account disable checks still apply when that customer has a local account.
+
+Production requires HTTPS for Secure cookies. If TLS terminates at a proxy, set
+`APP_ORIGIN` to its exact HTTPS origin without a trailing slash and restrict direct
+access to the upstream server. No proxy forwarding header is trusted as configuration.
+
+After `pnpm build`, run `pnpm test:e2e:chat:https` (PowerShell 7 required). Set
+`PLAYWRIGHT_CHANNEL=msedge` or install Playwright Chromium. The harness creates two
+accounts with temporary random credentials and a disposable database, drives the
+real login forms and chat UI through a loopback TLS proxy, and checks approvals,
+isolation, account switching, logout, disabling/re-enabling and throttling. It removes
+its credentials/database after exit. `pnpm test:e2e:chat` runs the HTTP loopback variant.
+See `DEPLOYMENT_ACCEPTANCE.md` for the local acceptance scope.
 
 ## Management workbench
 
@@ -100,7 +116,7 @@ pnpm build
 
 ## Conversation Internal API
 
-Workbench search matches customer IDs or any historical message; the summary still displays the latest message. Execution history is chronological, 50 records per page; an empty out-of-range workbench page returns to the first page. Apply `pnpm exec prisma migrate deploy` to install the composite pagination indexes. Substring message search may still scan content; these indexes support ordering and customer/status scoping, not full-text search.
+Workbench search matches customer IDs or any historical message; the summary still displays the latest message. Execution history is chronological, 50 records per page; an empty out-of-range workbench page returns to the first page. Apply `pnpm db:migrate` to install the composite pagination indexes. Substring message search may still scan content; these indexes support ordering and customer/status scoping, not full-text search.
 
 - POST /api/internal/conversations creates a conversation from customerId and initialMessage.
 - GET /api/internal/conversations lists conversations with their latest message, 20 at a time. Pass `?page=2` for later pages; the response includes `{ data, page, pageSize, total }`.
@@ -132,7 +148,7 @@ not an LLM. `IntentProvider`, `AgentRuntime`, and the typed `RuntimeTools` regis
 are injectable. Refund requests use a deterministic route before model classification and always pass through Policy; no model key is required.
 Execution claims and reply completion use database transactions. `RuntimeExecution`
 records the customer message, tool result, completion status, and sanitized failure code.
-Each message can start only one execution. Apply migrations with `pnpm exec prisma migrate deploy`
+Each message can start only one execution. Apply migrations with `pnpm db:migrate`
 before running the updated app. Call `POST /api/internal/runtime/recover` after a restart
 or during maintenance to move executions older than 15 minutes to human handoff.
 Recovery never repeats a tool call; a late worker cannot commit a recovered execution.
@@ -142,7 +158,7 @@ be exposed publicly without authentication and customer ownership checks.
 
 ## Refund approval MVP
 
-Apply `pnpm exec prisma migrate deploy` and `pnpm db:generate` before starting the updated app.
+Apply `pnpm db:migrate` and `pnpm db:generate` before starting the updated app.
 Create a `customer-1` conversation with `帮我退款 order-1001`, then call its existing
 `/run` endpoint. Policy requires human approval; the reply and conversation become
 `waiting_approval` without executing a refund. For multiple orders, a request such

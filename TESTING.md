@@ -1,9 +1,10 @@
 # Testing
 
 `pnpm test:e2e:chat:https` runs the same isolated flow through a real loopback TLS
-proxy (PowerShell 7 required). It additionally exercises account-switch cleanup and
-durable logout/replay rejection. This does not validate a remote deployment or a
-real customer identity provider; see `DEPLOYMENT_ACCEPTANCE.md`.
+proxy (PowerShell 7 required). It creates two temporary local accounts through the CLI, drives both login forms,
+and exercises account-switch cleanup, disable/enable, throttling and durable
+logout/replay rejection. This does not validate a remote deployment or a
+remote identity provider; see `DEPLOYMENT_ACCEPTANCE.md`.
 
 Web Chat checks: `pnpm test:e2e:chat` after `pnpm build` runs a real headless browser
 against a disposable production server/database. Set `PLAYWRIGHT_CHANNEL=msedge`
