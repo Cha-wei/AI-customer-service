@@ -1,5 +1,14 @@
 # Testing
 
+Web Chat checks: `pnpm test:e2e:chat` after `pnpm build` runs a real headless browser
+against a disposable production server/database. Set `PLAYWRIGHT_CHANNEL=msedge`
+to use installed Edge, or install Playwright Chromium. Coverage includes order queries,
+history after reload, explicit refund selection, approval and rejection polling,
+failed-send draft retention and retry, mobile overflow, expired sessions, cross-customer
+reads/writes, forged roles/identities, CSRF, pending-state guards and client bundle secrets.
+Unit/component tests additionally cover history prepending, invalid configuration,
+tampered/expired signatures, provider/runtime failure sanitization and unanswered-message guards.
+
 ## Goals
 
 Tests should protect meaningful behavior and module contracts. Prefer focused tests over coverage-driven test volume.

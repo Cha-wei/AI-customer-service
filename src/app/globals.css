@@ -1,4 +1,14 @@
 @import "tailwindcss";
+.chat-shell { max-width: 1100px; }
+.chat-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
+.chat-sidebar { padding: 20px; display: grid; gap: 16px; }
+.chat-conversation { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.chat-conversation[aria-pressed="true"] { border-color: #1456d9; background: #e8f0ff; }
+.chat-messages { min-height: 280px; max-height: 460px; overflow-wrap: anywhere; }
+.chat-composer { display: grid; gap: 12px; padding: 20px; border-top: 1px solid #e6e9ef; }
+.chat-composer textarea { resize: vertical; min-height: 90px; padding: 12px; border: 1px solid #cfd5df; border-radius: 10px; font: inherit; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 760px) { .chat-grid { grid-template-columns: 1fr; } .chat-sidebar { max-height: 240px; overflow-y: auto; } }
 :root { color-scheme: light; --ink: #172033; --muted: #667085; --line: #e6e9ef; --brand: #1456d9; --canvas: #f4f6fa; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--canvas); color: var(--ink); font-family: Arial, "Microsoft YaHei", sans-serif; }

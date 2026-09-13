@@ -1,5 +1,45 @@
 # AI Customer Service Workbench
 
+## Customer Web Chat
+
+Visit `/chat` for customer order queries, explicit refund order selection, conversation
+history (20 conversations and 50 messages per page), and automatic approval updates
+every 2.5 seconds. Refunds reuse the existing Runtime, Policy and admin approval
+flow. Processing, pending approval, handoff and resolved conversations disable sending;
+customers can start a new conversation. Refunds remain Mock operations.
+
+Set `WEB_CHAT_SESSION_SECRET` to an independent random server-only value of at least
+32 characters. The hosting application's authenticated server calls
+`POST /api/internal/web-chat/session` with its operator Bearer credential and
+`{ "customerId": "customer-1" }`, using the identity from its authenticated customer
+context. It forwards the returned `Set-Cookie` header to that customer's browser
+on the same origin, then redirects to `/chat`. Never call this provisioning endpoint
+from browser JavaScript or derive its customer ID from unverified browser input.
+There is intentionally no public customer-ID picker or default shared demo identity.
+
+The signed customer cookie expires after eight hours and is HttpOnly, SameSite=Strict
+and Secure in production (HTTPS required). Missing, expired or altered cookies deny
+access. Rotating the signing secret invalidates all customer sessions. This is an
+MVP host-login integration, not a new account/password system. Browser requests only
+use `/api/chat`; no internal API token is bundled or sent by the client. Each read/write
+checks the cookie identity and conversation ownership; body identity/role overrides
+are rejected, foreign conversations return 404, and writes require same Origin.
+Preserve the public Host/protocol through the reverse proxy.
+
+Send failures retain the draft. If a message was saved but runtime processing failed,
+the API returns its conversation ID and a warning so the customer can inspect history.
+Network timeouts can have an uncertain outcome: refresh history before manually
+resending. No automatic message or refund retry occurs. Concurrent messages on one
+conversation are serialized against the unanswered message and conversation state.
+Existing internal runtime recovery handles interrupted processing.
+
+After `pnpm build`, run `pnpm test:e2e:chat` with Playwright Chromium installed
+(`node node_modules/@playwright/test/cli.js install chromium`). Alternatively set
+`PLAYWRIGHT_CHANNEL=msedge` or `chrome` to use an installed browser. The script starts
+an isolated production server, creates temporary credentials/database, runs actual
+browser order/refund interactions and admin approval HTTP forms, and cleans up.
+It does not use local customer data or call an external model.
+
 ## Management workbench
 
 Configure `ADMIN_UI_PASSWORD` (12+ characters) and `ADMIN_UI_SESSION_SECRET` (32+ characters) in ignored local `.env`. Visit `/login`; production requires HTTPS for the Secure session cookie. Internal API Bearer credentials remain separate.

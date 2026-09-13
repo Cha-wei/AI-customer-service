@@ -147,7 +147,16 @@ Approval
 
 不要为了形式提前增加复杂度。
 
-## 8. 设计决策优先级
+## 8. Web Chat 渠道边界
+
+`/chat` 客户端通过同源 `/api/chat` 访问服务。独立的 `web-chat/session`
+从签名 HttpOnly Cookie 解析客户身份；会话只能由已认证的宿主服务端通过
+operator 保护的 Internal API 签发，浏览器不能自行指定客户身份。
+`web-chat/service` 校验会话和退款订单归属、串行追加客户消息，再调用现有
+Conversation Service / Agent Runtime。退款继续经过现有 Policy / Approval，
+不复制业务逻辑。客户端轮询客户范围内的消息接口读取审批结果，不读取内部执行诊断。
+
+## 9. 设计决策优先级
 出现多个方案时，优先级为：
 
 1. 简单
