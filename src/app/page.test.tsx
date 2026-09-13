@@ -26,7 +26,7 @@ describe("conversation management page", () => {
     expect(screen.getByText("customer-1")).toBeInTheDocument();
     expect(screen.getAllByText("待处理")).toHaveLength(2);
     expect(screen.getByText("我的订单什么时候到？")).toBeInTheDocument();
-    expect(screen.getByRole("link")).toHaveAttribute("href", "/conversations/conversation-1");
+    expect(screen.getByRole("link", { name: /customer-1/ })).toHaveAttribute("href", "/conversations/conversation-1");
   });
 
   it("shows an empty state", async () => {

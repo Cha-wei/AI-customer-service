@@ -186,7 +186,7 @@ try {
   await staff.goto(origin + '/');
   await staff.getByRole('combobox').selectOption('human_handoff');
   await staff.getByRole('button', { name: '筛选', exact: true }).click();
-  await staff.locator(`a[href="/conversations/${handoff.id}"]`).click();
+  await staff.locator(`a[href^="/conversations/${handoff.id}"]`).click();
   await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
   const beforeReply = await client.message.findFirstOrThrow({ where: { conversationId: handoff.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
   await staff.getByLabel('人工回复', { exact: true }).fill('您好，人工客服已接手，请说明问题。');
@@ -220,6 +220,30 @@ try {
   await page.getByRole('button', { name: '查看最新消息', exact: true }).click();
   await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
 
+  // Core Workspace UI: both desktop sizes, real conversation, drawer and draft-only shortcuts.
+  await mkdir('.next/acceptance', { recursive: true });
+  const uiConsoleErrors = [];
+  const collectUiConsole = message => { if (message.type() === 'error') uiConsoleErrors.push(message.text()); };
+  staff.on('console', collectUiConsole);
+  for (const width of [1440, 1280]) {
+    await staff.setViewportSize({ width, height: 900 });
+    await expect(staff.getByRole('dialog')).toHaveCount(0);
+    assert(await staff.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `workspace overflow at ${width}`);
+    const composer = await staff.getByLabel('人工回复', { exact: true }).boundingBox();
+    assert(composer && composer.y + composer.height <= 900, `composer visible at ${width}`);
+    await staff.screenshot({ path: `.next/acceptance/workspace-${width}.png`, animations: 'disabled', fullPage: true });
+    await staff.getByRole('button', { name: '客户信息' }).click();
+    await expect(staff.getByRole('dialog')).toBeVisible();
+    await staff.screenshot({ path: `.next/acceptance/workspace-drawer-${width}.png`, animations: 'disabled', fullPage: true });
+    await staff.keyboard.press('Escape');
+    await expect(staff.getByRole('dialog')).toHaveCount(0);
+    await expect(staff.getByRole('button', { name: '客户信息' })).toBeFocused();
+  }
+  staff.off('console', collectUiConsole);
+  assert.deepEqual(uiConsoleErrors, [], 'workspace console errors');
+  await staff.getByRole('button', { name: '您好，我来为您处理。', exact: true }).click();
+  await expect(staff.getByLabel('人工回复', { exact: true })).toHaveValue('您好，我来为您处理。');
+  await staff.getByLabel('人工回复', { exact: true }).fill('');
   await staff.getByRole('button', { name: '标记已解决' }).click();
   await expect(page.getByRole('status')).toContainText('会话已解决');
   await expect(page.getByLabel('消息', { exact: true })).toBeDisabled();

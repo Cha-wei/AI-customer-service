@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { MessageBubble } from "@/components/workspace/message-bubble";
+import { AIStatus } from "@/components/workspace/ai-status";
+import { MessageComposer } from "@/components/workspace/message-composer";
 import type { Message } from "@/modules/conversations";
 
 interface MessageHistoryProps {
@@ -96,31 +99,23 @@ export function MessageHistory({ conversationId, initialMessages, initialCursor,
     }
   }
 
-  if (messages.length === 0) return <EmptyMessages />;
+
   return <>
+    <AIStatus status={status ?? ""} />
     <div className="message-page-controls">
       {cursor ? <button className="secondary-button" disabled={loading} onClick={loadEarlier}>{loading ? "加载中…" : "加载更早消息"}</button> : <span>已到达最早消息</span>}
       <button className="secondary-button" onClick={() => { followLatest.current = true; if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight; }}>查看最新消息</button>
       {error && <span role="alert">加载失败，请重试。</span>}
     </div>
     <div className="message-list" ref={listRef} onScroll={event => { const list = event.currentTarget; followLatest.current = list.scrollHeight - list.scrollTop - list.clientHeight < 40; }}>
-      {messages.map((message) => <article className={`message message-${message.role}`} key={message.id}>
-        <div className="message-meta"><strong>{message.role === "customer" ? "客户" : message.role === "agent" ? "AI 客服" : message.role === "human" ? "人工客服" : "系统"}</strong><time dateTime={new Date(message.createdAt).toISOString()}>{formatDate(new Date(message.createdAt))}</time></div>
-        <p>{message.content}</p>
-      </article>)}
+      {messages.length === 0 ? <EmptyMessages /> : messages.map(message => <MessageBubble key={message.id} message={message} />)}
     </div>
-    {initialStatus === "human_handoff" && <form className="chat-composer" onSubmit={reply}>
-      <p role="status">{status === "human_handoff" ? "人工接管中，AI 已暂停。客户消息将自动更新。" : "会话已结束或状态改变，不能继续回复。"}</p>
-      {replyError && <p className="form-error" role="alert">{replyError}</p>}
-      <label htmlFor="human-reply">人工回复</label>
-      <textarea id="human-reply" maxLength={10000} value={draft} disabled={sending || status !== "human_handoff"} onChange={event => { setDraft(event.target.value); baseline.current = null; }} />
-      <button disabled={sending || status !== "human_handoff" || !draft.trim()}>{sending ? "发送中…" : "发送人工回复"}</button>
-    </form>}
+    {initialStatus === "human_handoff" && <MessageComposer draft={draft} sending={sending} active={status === "human_handoff"} error={replyError} onChange={value => { setDraft(value); baseline.current = null; }} onSubmit={reply} />}
+    {initialStatus !== "human_handoff" && <div className="composer-idle"><span aria-hidden="true">✦</span><p>{status === "resolved" ? "会话已结束，消息记录已保留" : status === "waiting_approval" ? "请先处理上方的退款审批" : "AI 正在负责此会话，转人工后可发送回复"}</p><span className="idle-send" aria-hidden="true">↑</span></div>}
   </>;
 }
 
 function EmptyMessages() { return <div className="state-card compact"><span className="state-icon" aria-hidden="true">◎</span><p>暂无消息记录</p></div>; }
-function formatDate(date: Date): string { return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date); }
 
 function mergeMessages(current: Message[], incoming: Message[]) {
   const byId = new Map(current.map(message => [message.id, message]));

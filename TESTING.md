@@ -69,3 +69,10 @@ Full MVP trial acceptance is recorded in `MVP_ACCEPTANCE.md`. The HTTPS harness
 now drives approve/reject through the administrator browser, tests staff draft retry,
 and seeds a long synthetic history to check viewport scrolling and reading-position
 preservation. Customer/admin screenshots are saved under ignored `.next/acceptance/`.
+
+Core Workspace UI acceptance also verifies 1440px and 1280px desktop widths,
+visible staff composer, no page overflow, drawer Escape/focus restoration and
+draft-only quick replies. Stable screenshots disable transient animations and
+are saved as `workspace-*.png`. The workspace interaction segment checks console
+errors; the complete browser flow continues to check uncaught page errors.
+See `UI_PHASE_1.md` for component and data boundaries.

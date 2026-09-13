@@ -6,13 +6,16 @@ vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 vi.mock("@/modules/approvals/composition-root", () => ({ getApprovalService: () => ({ list: async () => [] }) }));
 vi.mock("@/modules/conversations/composition-root", () => ({
-  getConversationService: () => ({ getHeader, listMessages }),
+  getConversationService: () => ({ getHeader, listMessages, list: async () => ({ conversations: [], page: 1, pageSize: 20, total: 0 }) }),
 }));
 vi.mock("@/modules/agent-runtime/prisma-execution-reader", () => ({
   PrismaExecutionReader: class { list = listExecutions; },
 }));
 
 describe("conversation detail page", () => {
+  beforeAll(() => {
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  });
   beforeEach(() => { getHeader.mockReset(); listMessages.mockReset(); listExecutions.mockReset(); });
 
   it("shows messages and execution details", async () => {
@@ -68,8 +71,8 @@ describe("conversation detail page", () => {
     render(await ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }), searchParams: Promise.resolve({ executionPage: "2" }) }));
 
     expect(listExecutions).toHaveBeenCalledWith("conversation-1", 50);
-    expect(screen.getByRole("link", { name: "上一页" })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=1");
-    expect(screen.getByRole("link", { name: "下一页" })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=3");
+    expect(screen.getByRole("link", { name: "上一页", hidden: true })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=1");
+    expect(screen.getByRole("link", { name: "下一页", hidden: true })).toHaveAttribute("href", "/conversations/conversation-1?executionPage=3");
   });
 
   it("redirects an empty out-of-range page to the first page", async () => {
