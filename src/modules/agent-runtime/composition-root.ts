@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { PrismaExecutionStore } from "./prisma-execution-store";
 import { CustomerServiceRuntime, type AgentRuntime } from "./runtime";
 import { createIntentProvider } from "./intent-composition";
+import { getApprovalService } from "../approvals/composition-root";
 
 let runtime: AgentRuntime | undefined;
 export function getAgentRuntime(): AgentRuntime {
   return runtime ??= new CustomerServiceRuntime(
     getConversationService(), createIntentProvider(), { orderQuery: getOrderQueryTool() },
     new PrismaExecutionStore(prisma),
+    getApprovalService(),
   );
 }

@@ -24,7 +24,7 @@ export interface RuntimeTools {
 }
 
 export interface RuntimeResult {
-  status: "open" | "human_handoff";
+  status: "open" | "human_handoff" | "waiting_approval";
   reply: Message;
   toolResult: ToolResult<OrderQueryOutput> | null;
 }
@@ -43,6 +43,7 @@ export class CustomerServiceRuntime implements AgentRuntime {
     private readonly intents: IntentProvider,
     private readonly tools: RuntimeTools,
     private readonly executions: ExecutionStore,
+    private readonly refunds?: { request(executionId: string, message: string): Promise<RuntimeResult> },
   ) {}
 
   async run(conversationId: string): Promise<RuntimeResult> {
@@ -57,6 +58,9 @@ export class CustomerServiceRuntime implements AgentRuntime {
       }
       const executionId = await this.executions.begin(id, message.id);
       try {
+        if (this.refunds && /退款|refund/i.test(message.content) && !/人工|human/i.test(message.content)) {
+          return await this.refunds.request(executionId, message.content);
+        }
         let intent: "order_query" | "handoff" = "handoff";
         let intentFailure: IntentFailureCode | undefined;
         try {

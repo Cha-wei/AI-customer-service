@@ -17,8 +17,14 @@ coverage/
 # Prisma / SQLite local data
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
 
 # Logs and tooling
 *.log

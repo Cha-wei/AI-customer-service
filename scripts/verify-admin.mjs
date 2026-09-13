@@ -58,6 +58,30 @@ try {
   const updated = (await (await request(`/api/internal/conversations/${id}`, { headers })).json()).data;
   assert.equal(updated.status, 'resolved');
   assert(updated.messages.some((m) => m.role === 'system'));
+  for (const [orderId, decision, expectedStatus] of [['order-1001', 'approve', 'resolved'], ['order-1002', 'reject', 'human_handoff']]) {
+    const refundCreated = await request('/api/internal/conversations', { method: 'POST', headers, body: JSON.stringify({ customerId: 'customer-1', initialMessage: `帮我退款 ${orderId}` }) });
+    const refundId = (await refundCreated.json()).data.id;
+    const run = await request(`/api/internal/conversations/${refundId}/run`, { method: 'POST', headers });
+    assert.equal((await run.json()).status, 'waiting_approval');
+    const approvalHtml = await (await request(`/conversations/${refundId}`, { headers: { cookie } })).text();
+    assert(approvalHtml.includes('批准退款') && approvalHtml.includes('拒绝退款') && approvalHtml.includes('高风险'));
+    const approvalId = /name="approvalId" value="([^"]+)"/.exec(approvalHtml)?.[1];
+    assert(approvalId, 'approval form missing');
+    const approvalPath = `/api/admin/conversations/${refundId}/approvals`;
+    const body = new URLSearchParams({ approvalId, decision });
+    assert.equal((await request(approvalPath, { method: 'POST', headers: { origin }, body })).status, 307, 'anonymous decision must require login');
+    assert.equal((await request(approvalPath, { method: 'POST', headers: { cookie, origin: 'https://foreign.example' }, body })).status, 403);
+    const decided = await request(approvalPath, { method: 'POST', headers: { cookie, origin }, body });
+    assert.equal(decided.status, 303);
+    assert(!decided.headers.get('location').includes('notice='));
+    const duplicate = await request(approvalPath, { method: 'POST', headers: { cookie, origin }, body });
+    assert(duplicate.headers.get('location').includes('notice=conflict'));
+    const refundConversation = (await (await request(`/api/internal/conversations/${refundId}`, { headers })).json()).data;
+    assert.equal(refundConversation.status, expectedStatus);
+    assert(refundConversation.messages.some(m => m.content.includes(decision === 'approve' ? '已完成 Mock 退款' : '未执行退款')));
+    const finishedHtml = await (await request(`/conversations/${refundId}`, { headers: { cookie } })).text();
+    assert(!finishedHtml.includes('name="decision"'));
+  }
   const logout = await request('/api/admin/logout', { method: 'POST', headers: { cookie, origin } });
   assert.equal(logout.status, 303);
   assert(logout.headers.get('set-cookie').includes('1970'));
@@ -68,7 +92,7 @@ try {
     const denied = await request('/api/admin/session', { method: 'POST', headers: { origin }, body: new URLSearchParams({ password: 'invalid' }) });
     assert.equal(denied.status, i === 5 ? 429 : 303);
   }
-  console.log('PASS: production login, cookies, page protection, mock orders, status update, logout, throttling; no credentials rendered.');
+  console.log('PASS: production login, cookies, page protection, mock orders, refund approval/rejection, duplicate and unauthorized decisions, status update, logout, throttling; no credentials rendered.');
 } finally {
   if (server && server.exitCode === null) {
     server.kill();

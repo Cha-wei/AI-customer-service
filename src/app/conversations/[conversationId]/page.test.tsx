@@ -4,6 +4,7 @@ import ConversationDetail from "./page";
 const { getHeader, listMessages, listExecutions } = vi.hoisted(() => ({ getHeader: vi.fn(), listMessages: vi.fn(), listExecutions: vi.fn() }));
 vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/modules/approvals/composition-root", () => ({ getApprovalService: () => ({ list: async () => [] }) }));
 vi.mock("@/modules/conversations/composition-root", () => ({
   getConversationService: () => ({ getHeader, listMessages }),
 }));

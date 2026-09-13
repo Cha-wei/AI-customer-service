@@ -8,7 +8,7 @@ The list queries 20 conversations per page in the database and preserves search/
 
 Login has a shared single-process budget of five attempts per 15 minutes, reset on success. Restarting clears the budget; multiple instances need a shared limiter before deployment. All administrators share the cooldown. Login, logout and status POST requests require a matching Origin header; configure a reverse proxy to preserve the public origin.
 
-A modular AI customer service platform MVP. The current repository contains the runnable foundation only; customer service business modules will be added as independently testable vertical slices.
+A modular AI customer service platform MVP with order queries and human-approved Mock refunds.
 
 ## Requirements
 
@@ -68,7 +68,7 @@ and returns customer/order data contained in tool results.
 
 The default `RuleIntentProvider` is a deterministic Chinese/English keyword demo,
 not an LLM. `IntentProvider`, `AgentRuntime`, and the typed `RuntimeTools` registry
-are injectable; only the read-only order tool is registered. No model key is required.
+are injectable. Refund requests use a deterministic route before model classification and always pass through Policy; no model key is required.
 Execution claims and reply completion use database transactions. `RuntimeExecution`
 records the customer message, tool result, completion status, and sanitized failure code.
 Each message can start only one execution. Apply migrations with `pnpm exec prisma migrate deploy`
@@ -78,6 +78,38 @@ Recovery never repeats a tool call; a late worker cannot commit a recovered exec
 There is no automatic scheduler or tool cancellation; tool results are recorded at
 completion, so results from a crashed worker may be absent. Internal endpoints assume a trusted local caller and must not
 be exposed publicly without authentication and customer ownership checks.
+
+## Refund approval MVP
+
+Apply `pnpm exec prisma migrate deploy` and `pnpm db:generate` before starting the updated app.
+Create a `customer-1` conversation with `帮我退款 order-1001`, then call its existing
+`/run` endpoint. Policy requires human approval; the reply and conversation become
+`waiting_approval` without executing a refund. For multiple orders, a request such
+as `帮我退款` asks for an order number; append a new customer message containing
+`退款 order-1001` and run again. Unknown/foreign orders and unavailable customer
+context go to human handoff. Explicit requests for a human retain priority.
+
+An authenticated administrator opens the conversation's **退款审批** panel to see
+the order, customer, Policy reason, status and result, and approve or reject.
+The form POSTs to `/api/admin/conversations/:conversationId/approvals` with
+`approvalId` and `decision=approve|reject`. It requires an administrator session
+and matching Origin; customer API tokens cannot approve refunds.
+
+Approval revalidates ownership through the existing Customer Context interface.
+Success records a Mock refund receipt and resolves the conversation. Rejection
+does not call the tool; rejection and tool failure both hand off to a human.
+Decided approvals cannot be decided again. Pending, approved or failed requests
+block further requests for the same customer/order, including other conversations.
+A unique customer/order ledger also prevents a second successful refund.
+
+This is a simulated full-order refund; there is no money movement or partial amount
+because Mock orders have no price data. Approval decisions, Mock receipts and
+messages commit in one SQLite transaction. Persistence failure rolls everything
+back, leaving the pending approval available for a new decision; tool failure is
+terminal and is never automatically retried. No external side effects occur inside
+the Mock tool. A real payment provider must support durable idempotency and an
+execution/reconciliation lifecycle before replacing it. The shared administrator
+session is reused; individual approver accounts remain outside this MVP.
 
 ## Optional OpenAI intent classification
 

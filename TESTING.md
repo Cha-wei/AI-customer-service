@@ -32,4 +32,11 @@ pnpm build
 
 Before a stage is committed, run all relevant checks and ensure no secrets or local database files are included.
 
+Refund integration tests apply every migration to an isolated temporary SQLite database.
+They cover Policy gating, pending/approve/reject, duplicate and concurrent decisions,
+duplicate order requests, customer/order isolation, ambiguous orders, provider/tool
+failure, expired executions and transaction rollback on failed reply persistence.
+Admin route tests check session and Origin protection. Production acceptance also
+exercises refund forms, approve/reject outcomes and duplicate decision rejection.
+
 After `pnpm build`, run `node scripts/verify-admin.mjs` for production HTTP acceptance: login, cookie flags, protected pages, mock order execution, status updates, logout and throttling. It uses temporary credentials/database and cleans them up. It tests cookie transport with an HTTP client; production browser access still requires HTTPS.
