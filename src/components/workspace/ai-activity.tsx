@@ -1,3 +1,4 @@
+import type { Approval } from "@prisma/client";
 import type { ExecutionRecord } from "@/modules/agent-runtime/execution-reader";
 import { formatDate } from "./presentation";
 
@@ -28,8 +29,22 @@ export function activitySteps(execution: ExecutionRecord, approval?: ActivityApp
 }
 
 export function AIActivity({ execution, approval }: { execution: ExecutionRecord; approval?: ActivityApproval }) {
-  return <section className="ai-activity" aria-label="AI 处理记录">
-    <header><span className="ai-badge">AI</span><strong>处理记录</strong><time dateTime={new Date(execution.createdAt).toISOString()}>{formatDate(execution.createdAt)}</time></header>
-    <ol>{activitySteps(execution, approval).map((step, index) => <li className={`activity-${step.state}`} key={index}><span aria-hidden="true">{step.state === "done" ? "✓" : step.state === "pending" ? "◌" : "!"}</span><div><strong>{step.label}</strong><p>{step.detail}</p></div></li>)}</ol>
-  </section>;
+  return <details className="ai-activity" aria-label="AI 处理记录">
+    <summary><span className="ai-badge">AI</span><strong>查看处理记录</strong><time dateTime={new Date(execution.createdAt).toISOString()}>{formatDate(execution.createdAt)}</time></summary>
+    <ActivityTimeline steps={activitySteps(execution, approval)} />
+  </details>;
+}
+
+export function ActivityTimeline({ steps }: { steps: ActivityStep[] }) {
+  return <ol className="execution-timeline">{steps.map((step, index) => <li className={`activity-${step.state}`} key={`${index}-${step.label}`}><span aria-hidden="true">{step.state === "done" ? "✓" : step.state === "pending" ? index + 1 : "!"}</span><div><strong>{step.label}</strong><p>{step.detail}</p></div></li>)}</ol>;
+}
+
+export function approvalStep(approval: Pick<Approval, "status" | "orderId">): ActivityStep {
+  const states: Record<string, ActivityStep> = {
+    pending: { label: "等待人工审批", detail: `订单 ${approval.orderId} 尚未执行退款`, state: "pending" },
+    approved: { label: "审批通过并退款", detail: `订单 ${approval.orderId} 的退款执行已成功`, state: "done" },
+    rejected: { label: "审批已拒绝", detail: "未执行退款，请由人工继续跟进", state: "warning" },
+    failed: { label: "退款执行失败", detail: "审批通过后执行失败，请核实退款结果", state: "warning" },
+  };
+  return states[approval.status] ?? { label: "审批状态待核实", detail: "请查看审批记录", state: "warning" };
 }

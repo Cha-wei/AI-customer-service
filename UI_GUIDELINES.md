@@ -87,3 +87,12 @@ shadcn MCP 使用官方 stdio 方式，当前机器在 Codex 用户配置中启�
 本次增加 components.json、Button、cn、语义主题及最小依赖，未迁移业务页面，未安装额外完整 UI 库、动画库或 Figma Code Connect。图标库已就绪，旧 SVG 组件保留。后续按实际任务添加基础组件。
 
 验证：生产构建、类型检查、lint、219 项测试通过（1 项外部服务 live 测试跳过）；HTTPS 浏览器验收覆盖登录、会话、审批、人工回复、布局折叠与控制台检查。另在浏览器用实际编译 CSS 验证新 Button 的背景、描边及图标尺寸。shadcn MCP 的 initialize、tools/list 和官方 registry 搜索通过；可运行 `node scripts/verify-shadcn-mcp.mjs` 复验。Figma whoami 登录验证通过，未验证具体设计文件权限。
+
+
+## 第一轮设计落地（2026-09-15）
+
+采用 A 的 Professional SaaS 四栏布局、蓝灰配色、紧凑会话队列及左右消息层级，结合 B 的 AI 执行状态步骤。导航、列表与上下文仍独立折叠；审批操作位于消息之后、输入区之前。ApprovalPanel 保留原表单接口，关键按钮使用已有 shadcn Button，导航图标统一使用 Lucide。
+
+ActivityTimeline 与 activitySteps 复用真实执行记录；审批单独区分待审批、拒绝、成功退款及执行失败。不展示模拟进度、置信度或未记录的知识引用。右侧明确标注“本页最近执行”和快照时间，不把分页历史当作实时执行状态。业务流程、权限与 API 不变。
+
+设计参考：[A / B / C 探索文件](https://www.figma.com/design/blHaCD4q7lekdYkRL3s0Qo)。本轮 Figma MCP 读取达到 Starter 额度，依据前一轮已生成并核验的设计参数落地；后续额度恢复后可继续对照设计节点。
