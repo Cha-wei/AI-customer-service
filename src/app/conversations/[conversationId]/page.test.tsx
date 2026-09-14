@@ -1,6 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import ConversationDetail from "./page";
 
+vi.mock("@/components/workspace/workspace-snapshot", () => ({ readWorkspaceSnapshot: async () => ({ revision: "v1", latestExecution: undefined }) }));
+vi.mock("@/components/workspace/workspace-sync", () => ({ WorkspaceSync: () => null }));
+
 const { getHeader, listMessages, listExecutions } = vi.hoisted(() => ({ getHeader: vi.fn(), listMessages: vi.fn(), listExecutions: vi.fn() }));
 vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));

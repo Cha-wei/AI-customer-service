@@ -38,3 +38,14 @@ it("retains both draft and request snapshot on uncertain sends", async () => {
   const requests = fetcher.mock.calls.filter(([, options]) => options?.method === "POST").map(([, options]) => JSON.parse(options!.body as string));
   expect(requests).toEqual([{ content: "人工回答", lastMessageId: "m1" }, { content: "人工回答", lastMessageId: "m1" }]);
 });
+
+it("merges server refreshes and preserves a draft when the conversation closes", async () => {
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+  const view = render(<MessageHistory conversationId="c-1" initialStatus="human_handoff" initialMessages={[message("m1", "旧消息")]} initialCursor={null} />);
+  fireEvent.change(screen.getByLabelText("人工回复"), { target: { value: "未发送草稿" } });
+  view.rerender(<MessageHistory conversationId="c-1" initialStatus="resolved" initialMessages={[message("m2", "新消息")]} initialCursor={null} />);
+  expect(screen.getByText("旧消息")).toBeInTheDocument();
+  expect(screen.getByText("新消息")).toBeInTheDocument();
+  expect(screen.getByLabelText("人工回复")).toHaveValue("未发送草稿");
+  expect(screen.getByRole("button", { name: "发送人工回复" })).toBeDisabled();
+});

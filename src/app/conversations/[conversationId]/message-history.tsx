@@ -34,6 +34,14 @@ export function MessageHistory({ approvalPanel, conversationId, initialMessages,
   const initialized = useRef(false);
   const followLatest = useRef(true);
 
+  // RSC refreshes merge messages without resetting drafts or older loaded pages.
+  const [serverSnapshot, setServerSnapshot] = useState({ initialMessages, initialStatus });
+  if (serverSnapshot.initialMessages !== initialMessages || serverSnapshot.initialStatus !== initialStatus) {
+    setServerSnapshot({ initialMessages, initialStatus });
+    setMessages(current => mergeMessages(current, initialMessages));
+    setStatus(initialStatus);
+  }
+
   useEffect(() => {
     if (initialStatus !== "human_handoff") return;
     let cancelled = false;
@@ -116,8 +124,8 @@ export function MessageHistory({ approvalPanel, conversationId, initialMessages,
       <div className="message-stream">{messages.length === 0 ? <EmptyMessages /> : messages.map(message => <Fragment key={message.id}><MessageBubble message={message} />{executions.filter(execution => execution.messageId === message.id).map(execution => <AIActivity key={execution.id} execution={execution} approval={approvals.find(approval => approval.executionId === execution.id)} />)}</Fragment>)}</div>
     </div>
     {approvalPanel}
-    {initialStatus === "human_handoff" && <MessageComposer draft={draft} sending={sending} active={status === "human_handoff"} error={replyError} onChange={value => { setDraft(value); baseline.current = null; }} onSubmit={reply} />}
-    {initialStatus !== "human_handoff" && <div className="composer-idle"><span className="ai-badge" aria-hidden="true">AI</span><p>{status === "resolved" ? "会话已结束，消息记录已保留" : status === "waiting_approval" ? "请先处理上方的退款审批" : "AI 正在负责此会话，转人工后可发送回复"}</p><span className="idle-send" aria-hidden="true">↑</span></div>}
+    {(status === "human_handoff" || draft.length > 0) && <MessageComposer draft={draft} sending={sending} active={status === "human_handoff"} error={replyError} onChange={value => { setDraft(value); baseline.current = null; }} onSubmit={reply} />}
+    {status !== "human_handoff" && draft.length === 0 && <div className="composer-idle"><span className="ai-badge" aria-hidden="true">AI</span><p>{status === "resolved" ? "会话已结束，消息记录已保留" : status === "waiting_approval" ? "请先处理上方的退款审批" : "AI 正在负责此会话，转人工后可发送回复"}</p><span className="idle-send" aria-hidden="true">↑</span></div>}
   </>;
 }
 

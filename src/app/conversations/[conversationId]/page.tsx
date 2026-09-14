@@ -1,3 +1,5 @@
+import { readWorkspaceSnapshot } from "@/components/workspace/workspace-snapshot";
+import { WorkspaceSync } from "@/components/workspace/workspace-sync";
 import { ApprovalPanel } from "@/components/workspace/approval-panel";
 import { Button } from "@/components/ui/button";
 import { ConversationHeader } from "@/components/workspace/conversation-header";
@@ -23,6 +25,8 @@ export default async function ConversationDetail({ params, searchParams }: { par
   const filters = await searchParams;
   const requestedExecutionPage = /^\d+$/.test(filters?.executionPage ?? "") ? Number(filters?.executionPage) : 1;
   const executionPage = Number.isSafeInteger(requestedExecutionPage) && requestedExecutionPage > 0 && requestedExecutionPage <= 20_001 ? requestedExecutionPage : 1;
+  // Capture the revision first: changes during rendering must trigger another sync.
+  const snapshot = await readWorkspaceSnapshot(conversationId).catch(error => { if (error instanceof ConversationNotFoundError) notFound(); throw error; });
   const { conversation, messages, page } = await loadConversation(conversationId, executionPage);
   if (executionPage > 1 && page.executions.length === 0) redirect(`/conversations/${encodeURIComponent(conversationId)}`);
   const notice = filters?.notice;
@@ -30,9 +34,10 @@ export default async function ConversationDetail({ params, searchParams }: { par
   const activity = await readMessageActivity(conversation.id, messages.messages.map(message => message.id));
 
   const inbox = await ConversationList({ filters, selectedId: conversation.id });
-  const context = await ContextPanel({ conversation, page, executionPage, filters, approvals });
+  const context = await ContextPanel({ conversation, page, executionPage, filters, approvals, latestExecution: snapshot.latestExecution });
   return <WorkspaceLayout inbox={inbox} context={context} filter={filters?.status}>
 
+    <WorkspaceSync conversationId={conversationId} revision={snapshot.revision} />
     <ConversationHeader customerId={conversation.customerId} createdAt={conversation.createdAt} status={conversation.status} statusLabel={statusLabels[conversation.status] ?? conversation.status}>
 
       {(conversation.status === "open" || conversation.status === "human_handoff") &&
@@ -45,7 +50,7 @@ export default async function ConversationDetail({ params, searchParams }: { par
     {notice && <p className="workspace-notice" role="alert">{notice === "conflict" ? "会话状态已改变或正在执行，请刷新后重试。" : "更新失败，请稍后重试。"}</p>}
     <div className="conversation-thread">
       <section className="thread-panel" aria-label="消息记录">
-        <MessageHistory key={`${conversation.id}:${conversation.status}`} approvalPanel={<ApprovalPanel approvals={approvals} conversationId={conversation.id} />} initialStatus={conversation.status} conversationId={conversation.id} initialMessages={messages.messages} initialCursor={messages.nextCursor} executions={activity} approvals={approvals.map(({ executionId, orderId }) => ({ executionId, orderId }))} />
+        <MessageHistory key={conversation.id} approvalPanel={<ApprovalPanel approvals={approvals} conversationId={conversation.id} />} initialStatus={conversation.status} conversationId={conversation.id} initialMessages={messages.messages} initialCursor={messages.nextCursor} executions={activity} approvals={approvals.map(({ executionId, orderId }) => ({ executionId, orderId }))} />
       </section>
 
     </div>

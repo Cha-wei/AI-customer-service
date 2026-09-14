@@ -231,6 +231,9 @@
 .execution-timeline .activity-warning > span { background: #fff4e4; color: var(--ws-amber); border-color: #f0dec0; }
 .execution-timeline strong { font-size: 12px; font-weight: 500; }
 .execution-timeline p { color: var(--ws-muted); font-size: 11px; overflow-wrap: anywhere; }
+.workspace-sync { flex-shrink: 0; padding: 4px 20px; border-bottom: 1px solid var(--ws-line); font-size: 10px; color: var(--ws-muted); }
+.workspace-sync[role="alert"] { color: var(--ws-amber); background: #fff8ed; }
+.context-next-action { margin-top: 12px !important; padding-left: 8px; border-left: 2px solid var(--ws-brand); font-size: 11px; color: var(--ws-ink); }
 .execution-scope { margin-top: 12px !important; font-size: 10px; color: var(--ws-muted); }
 .context-section > details > summary { cursor: pointer; color: var(--ws-muted); }
 @keyframes ai-pulse { 50% { opacity: .4; } }

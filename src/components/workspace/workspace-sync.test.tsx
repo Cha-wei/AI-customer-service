@@ -1,0 +1,48 @@
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { WorkspaceSync } from "./workspace-sync";
+const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
+const router = { refresh };
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
+beforeEach(() => { vi.useFakeTimers(); refresh.mockClear(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+const response = (revision: string) => new Response(JSON.stringify({ revision }));
+it("refreshes only changed revisions and retries until the rendered revision catches up", async () => {
+  const fetcher = vi.fn().mockResolvedValue(response("v1"));
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<WorkspaceSync conversationId="c" revision="v1" />);
+  await act(async () => {});
+  expect(refresh).not.toHaveBeenCalled();
+  fetcher.mockImplementation(async () => response("v2"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+  expect(refresh).toHaveBeenCalledTimes(1);
+  view.rerender(<WorkspaceSync conversationId="c" revision="v2" />);
+  await act(async () => {});
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+it("reports failures, backs off and recovers without refreshing unchanged data", async () => {
+  const fetcher = vi.fn().mockRejectedValue(new Error("offline"));
+  vi.stubGlobal("fetch", fetcher);
+  render(<WorkspaceSync conversationId="c" revision="v1" />);
+  await act(async () => {});
+  expect(screen.getByRole("alert")).toHaveTextContent("可能已过期");
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  fetcher.mockImplementation(async () => response("v1"));
+  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(refresh).not.toHaveBeenCalled();
+});
+it("pauses while hidden and aborts outstanding requests on unmount", async () => {
+  const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+  const fetcher = vi.fn(() => new Promise<Response>(() => {}));
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<WorkspaceSync conversationId="c" revision="v1" />);
+  await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+  expect(fetcher).not.toHaveBeenCalled();
+  hidden.mockReturnValue(false);
+  await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  const signal = (fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].signal;
+  view.unmount();
+  expect(signal?.aborted).toBe(true);
+});

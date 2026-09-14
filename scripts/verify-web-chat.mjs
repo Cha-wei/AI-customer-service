@@ -168,7 +168,10 @@ try {
     const approval = await client.approval.findFirstOrThrow({ where: { orderId, status: 'pending' } });
     assert.equal(await client.mockRefund.count({ where: { orderId } }), 0);
     assert.equal((await post({ content: '订单', conversationId: approval.conversationId })).status, 409);
-    await staff.goto(`${origin}/conversations/${approval.conversationId}`);
+    if (decision === 'reject') await staff.goto(`${origin}/conversations/${approval.conversationId}`);
+    // The first approval appears on the already-open workspace without navigation.
+    await staff.bringToFront();
+    await expect(staff.locator('.context-next-action')).toContainText('核对对话底部的退款申请', { timeout: 15000 });
     await expect(staff.locator('.ai-activity').filter({ hasText: '提交退款审批' })).toHaveCount(1);
     await staff.getByRole('button', { name: decision === 'approve' ? '批准退款' : '拒绝退款', exact: true }).click();
     await expect(staff.getByRole('button', { name: '批准退款', exact: true })).toHaveCount(0);
