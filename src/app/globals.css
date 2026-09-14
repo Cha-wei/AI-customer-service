@@ -1,4 +1,8 @@
 @import "tailwindcss";
+@import "./ui-theme.css";
+
+/* Legacy styles retain their order; utility classes can override them. */
+@layer components {
 .chat-shell { max-width: 1100px; }
 .chat-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
 .chat-sidebar { padding: 20px; display: grid; gap: 16px; }
@@ -7,7 +11,7 @@
 .chat-messages { min-height: 280px; max-height: 460px; overflow-wrap: anywhere; }
 .chat-composer { display: grid; gap: 12px; padding: 20px; border-top: 1px solid #e6e9ef; }
 .chat-composer textarea { resize: vertical; min-height: 90px; padding: 12px; border: 1px solid #cfd5df; border-radius: 10px; font: inherit; }
-button:disabled { opacity: .5; cursor: not-allowed; }
+button:where(:not([data-slot="button"])):disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 760px) { .chat-grid { grid-template-columns: 1fr; } .chat-sidebar { max-height: 240px; overflow-y: auto; } }
 :root { color-scheme: light; --ink: #172033; --muted: #667085; --line: #e6e9ef; --brand: #1456d9; --canvas: #f4f6fa; }
 * { box-sizing: border-box; }
@@ -52,17 +56,18 @@ input:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rg
 .execution dt { margin-bottom: 5px; color: var(--muted); font-size: 12px; } .execution dd { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; }
 .state-page { display: grid; place-items: center; } .state-card { padding: 56px 24px; text-align: center; } .state-card.compact { padding: 42px 20px; }
 .state-icon { display: grid; width: 42px; height: 42px; margin: 0 auto 14px; place-items: center; border-radius: 14px; background: #e8f0ff; color: var(--brand); font-weight: 800; }
-.button, button { display: inline-block; border: 0; border-radius: 10px; padding:   10px 15px; background: var(--brand); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.button, button:where(:not([data-slot="button"])) { display: inline-block; border: 0; border-radius: 10px; padding:   10px 15px; background: var(--brand); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
 .secondary-button { padding: 8px 12px; border: 1px solid #d5dae4; background: #fff; color: #465167; font-size: 13px; }
 .login-shell { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: radial-gradient(circle at top, #e8efff, var(--canvas) 55%); }
 .login-card { width: min(100%, 430px); padding: 38px; border: 1px solid var(--line); border-radius: 22px; background: #fff; box-shadow: 0 18px 55px rgba(25, 39, 69, .12); }
 .login-card h1 { font-size: 30px; }
 .login-intro { margin: 12px 0 24px; color: var(--muted); }
 .login-card form { display: grid; gap: 10px; }
-.login-card button { margin-top: 6px; }
+.login-card button:where(:not([data-slot="button"])) { margin-top: 6px; }
 .form-error { padding: 11px 13px; border-radius: 9px; background: #ffebeb; color: #a42b2b; font-size: 13px; }
 .security-note { margin: 18px 0 0; color: #7c8698; font-size: 12px; text-align: center; }
 .skeleton { border-radius: 10px; background: linear-gradient(90deg, #e9edf4 25%, #f5f7fa 50%, #e9edf4 75%); background-size: 200% 100%; animation: pulse 1.4s infinite; }
 .skeleton-title { width: 260px; height: 52px; margin-bottom: 28px; } .skeleton-panel { min-height: 300px; padding: 24px; } .skeleton-row { height: 66px; margin-bottom: 14px; }
 @keyframes pulse { to { background-position: -200% 0; } }
 @media (max-width: 760px) { .shell { width: min(100% - 24px, 1180px); padding-top: 28px; } .detail-grid, .filters { grid-template-columns: 1fr; } .conversation-row {grid-template-columns: 42px minmax(0, 1fr) 15px; padding: 16px; } .conversation-row time { display: none; } .topbar, .detail-header { align-items: flex-start; } }
+}

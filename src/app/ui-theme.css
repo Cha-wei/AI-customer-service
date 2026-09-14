@@ -1,0 +1,37 @@
+/* Separate semantic names avoid changing the legacy --muted text token. */
+@theme inline {
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: #fff;
+  --color-secondary: #f4f5f8;
+  --color-secondary-foreground: #252938;
+  --color-muted: #f4f5f8;
+  --color-muted-foreground: #667085;
+  --color-accent: #f0ecfb;
+  --color-accent-foreground: #5840b5;
+  --color-destructive: #a42b2b;
+  --color-border: #e9ebf0;
+  --color-input: #cfd5df;
+  --color-ring: var(--ui-primary);
+  --color-card: var(--ui-background);
+  --color-card-foreground: var(--ui-foreground);
+  --color-popover: var(--ui-background);
+  --color-popover-foreground: var(--ui-foreground);
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+}
+
+:root {
+  --ui-background: #fff;
+  --ui-foreground: #252938;
+  --ui-primary: #6a50cf;
+}
+
+.workspace {
+  --ui-background: var(--ws-surface);
+  --ui-foreground: var(--ws-ink);
+  --ui-primary: var(--ws-brand);
+}

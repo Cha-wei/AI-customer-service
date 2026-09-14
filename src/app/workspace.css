@@ -1,3 +1,4 @@
+@layer components {
 /* Workspace v2: layout sizes and visual tokens stay local to the admin surface. */
 .workspace {
   --ws-canvas: #f7f8fa; --ws-surface: #fff; --ws-soft: #f4f5f8;
@@ -25,11 +26,11 @@
 .workspace h3 { font-size: 13px; }
 .workspace .muted { color: var(--ws-muted); }
 .workspace .mono { font-family: ui-monospace, Consolas, monospace; font-size: var(--ws-text-xs); overflow-wrap: anywhere; }
-.workspace button, .workspace a, .workspace input, .workspace textarea { transition: background var(--ws-motion), color var(--ws-motion), border-color var(--ws-motion); }
-.workspace button { background: var(--ws-brand); border-radius: var(--ws-radius-sm); font-size: var(--ws-text-sm); padding: 7px var(--ws-space-3); font-weight: 500; }
-.workspace button:hover { background: var(--ws-brand-hover); }
-.workspace button:disabled { cursor: not-allowed; }
-.workspace :is(a,button,input,textarea,summary):focus-visible { outline: 2px solid var(--ws-brand); outline-offset: 2px; box-shadow: var(--ws-focus); }
+.workspace button:where(:not([data-slot="button"])), .workspace a, .workspace input, .workspace textarea { transition: background var(--ws-motion), color var(--ws-motion), border-color var(--ws-motion); }
+.workspace button:where(:not([data-slot="button"])) { background: var(--ws-brand); border-radius: var(--ws-radius-sm); font-size: var(--ws-text-sm); padding: 7px var(--ws-space-3); font-weight: 500; }
+.workspace button:where(:not([data-slot="button"])):hover { background: var(--ws-brand-hover); }
+.workspace button:where(:not([data-slot="button"])):disabled { cursor: not-allowed; }
+.workspace :is(a,button:where(:not([data-slot="button"])),input,textarea,summary):focus-visible { outline: 2px solid var(--ws-brand); outline-offset: 2px; box-shadow: var(--ws-focus); }
 .workspace .secondary-button, .workspace .icon-button { background: var(--ws-surface); border: 1px solid var(--ws-line); color: #606878; }
 .workspace .secondary-button:hover, .workspace .icon-button:hover { color: var(--ws-brand); background: var(--ws-tint); }
 .workspace-icon { width: 19px; height: 19px; flex-shrink: 0; }
@@ -78,8 +79,8 @@
 .inbox-count { font-size: 11px; color: #79808e; background: #eef0f4; padding: 0 6px; border-radius: var(--ws-radius-sm); }
 .queue-search { display: flex; align-items: center; margin: 0 var(--ws-space-4) var(--ws-space-3); border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: white; }
 .workspace .queue-search input { border: 0; background: transparent; min-width: 0; height: 34px; font-size: 11px; padding: 0 10px; border-radius: var(--ws-radius-sm); }
-.workspace .queue-search button { padding: 6px; display: flex; color: var(--ws-muted); background: transparent; }
-.workspace .queue-search button:hover { color: var(--ws-brand); background: var(--ws-tint); }
+.workspace .queue-search button:where(:not([data-slot="button"])) { padding: 6px; display: flex; color: var(--ws-muted); background: transparent; }
+.workspace .queue-search button:where(:not([data-slot="button"])):hover { color: var(--ws-brand); background: var(--ws-tint); }
 .queue-filters { display: flex; flex-wrap: wrap; gap: var(--ws-space-1); padding: 0 var(--ws-space-4) var(--ws-space-3); border-bottom: 1px solid var(--ws-line); }
 .queue-filters a { font-size: 11px; color: #777f8f; padding: 3px 7px; border-radius: var(--ws-radius-sm); }
 .queue-filters a:hover { background: var(--ws-soft); }
@@ -119,8 +120,8 @@
 .customer-heading h1 { font-size: 16px; margin: 0; }
 .customer-heading p { font-size: 10px; overflow-wrap: anywhere; }
 .conversation-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.workspace .conversation-actions button { border: 1px solid var(--ws-line); background: white; color: #6e7584; padding: 5px 8px; font-size: 11px; }
-.workspace .conversation-actions button:hover { background: var(--ws-soft); }
+.workspace .conversation-actions button:where(:not([data-slot="button"])) { border: 1px solid var(--ws-line); background: white; color: #6e7584; padding: 5px 8px; font-size: 11px; }
+.workspace .conversation-actions button:where(:not([data-slot="button"])):hover { background: var(--ws-soft); }
 .conversation-thread, .thread-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .ai-status { display: flex; align-items: center; gap: 10px; padding: 10px var(--ws-space-5); background: #faf9fd; border-bottom: 1px solid #f0edf7; flex-shrink: 0; }
 .ai-badge { display: inline-grid; place-items: center; flex-shrink: 0; min-width: 24px; height: 22px; padding: 0 4px; font-size: 10px; font-weight: 700; color: var(--ws-brand); background: var(--ws-tint); border-radius: 4px; }
@@ -131,7 +132,7 @@
 .ai-status-human_handoff .ai-badge, .ai-status-resolved .ai-badge { color: #7c8493; background: var(--ws-soft); }
 .processing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ws-brand); margin-left: auto; animation: ai-pulse 1.5s infinite; }
 .workspace .message-page-controls { min-height: 28px; border: 0; gap: 10px; padding: 3px var(--ws-space-4); color: #a2a7b1; font-size: 10px; }
-.workspace .message-page-controls button { border: 0; color: #9399a7; font-size: 10px; padding: 2px 6px; background: transparent; }
+.workspace .message-page-controls button:where(:not([data-slot="button"])) { border: 0; color: #9399a7; font-size: 10px; padding: 2px 6px; background: transparent; }
 .workspace .message-list { flex: 1; min-height: 80px; max-height: none; padding: var(--ws-space-5) clamp(16px, 3vw, 40px); overflow-y: auto; }
 .message-stream { max-width: var(--ws-reading-width); margin: 0 auto; }
 .workspace .message { display: flex; gap: var(--ws-space-3); max-width: 100%; width: 100%; margin: 0 0 var(--ws-space-6); border: 0; padding: 0; background: transparent; border-radius: 0; }
@@ -165,7 +166,7 @@
 .workspace .chat-composer > p { color: var(--ws-muted); font-size: 10px; }
 .workspace .chat-composer label { color: #606a7b; font-size: 11px; grid-column: 1 / -1; }
 .workspace .chat-composer textarea { min-height: 64px; max-height: 130px; padding: 10px var(--ws-space-3); border: 1px solid var(--ws-line); border-radius: var(--ws-radius); font-size: 13px; font-family: inherit; resize: vertical; }
-.workspace .chat-composer > button { grid-column: 2; font-size: 11px; }
+.workspace .chat-composer > button:where(:not([data-slot="button"])) { grid-column: 2; font-size: 11px; }
 .workspace .chat-composer { padding-inline: max(var(--ws-space-5), calc((100% - var(--ws-reading-width)) / 2)); }
 .send-arrow { margin-left: var(--ws-space-3); }
 .quick-replies { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -180,7 +181,7 @@
 .workspace .approval-panel .execution { padding: var(--ws-space-2) var(--ws-space-5); margin: 0; border: 0; border-radius: 0; font-size: var(--ws-text-xs); }
 .approval-panel p { overflow-wrap: anywhere; color: #8c806d; }
 .approval-panel form { display: flex; gap: var(--ws-space-2); margin-top: var(--ws-space-2); }
-.workspace .approval-panel button[value="reject"] { background: white; color: #837867; border: 1px solid var(--ws-line); }
+.workspace .approval-panel button:where(:not([data-slot="button"]))[value="reject"] { background: white; color: #837867; border: 1px solid var(--ws-line); }
 .context-panel { flex: 0 0 var(--ws-context-width); width: var(--ws-context-width); min-width: 0; display: flex; flex-direction: column; border-left: 1px solid var(--ws-line); background: #fcfcfd; }
 .context-heading { display: flex; flex-shrink: 0; justify-content: space-between; align-items: center; padding: var(--ws-space-4); border-bottom: 1px solid var(--ws-line); }
 .context-heading h2 { font-size: 13px; margin: 0; }
@@ -220,3 +221,4 @@
 @media (max-width: 1100px) { .workspace { --ws-nav-width: 144px; --ws-list-width: 226px; --ws-context-width: 228px; } .workspace-brand strong { font-size: 11px; } .workspace .sidebar-link { font-size: 12px; gap: 8px; } .sidebar-link small { font-size: 8px; } .conversation-header { padding: var(--ws-space-3); } .conversation-actions { width: 100%; justify-content: flex-end; } }
 @media (max-width: 900px) { .workspace:not(.nav-collapsed) { --ws-nav-width: 60px; } .workspace .nav-label { display: none; } .workspace-brand { justify-content: center; } .workspace .sidebar-link { justify-content: center; } .workspace-conversation { min-width: 300px; } .workspace-panels { overflow-x: auto; } }
 @media (prefers-reduced-motion: reduce) { .workspace *, .workspace *::before, .workspace *::after { animation: none !important; transition: none !important; } }
+}
