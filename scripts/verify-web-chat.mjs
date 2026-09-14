@@ -142,6 +142,21 @@ try {
   await staff.getByLabel('管理密码').fill(password);
   await staff.getByRole('button', { name: '登录', exact: true }).click();
   await expect(staff).toHaveURL(origin + '/');
+  await staff.getByRole('searchbox').fill('陈雨');
+  await staff.getByRole('button', { name: '搜索会话', exact: true }).click();
+  await expect(staff.locator('.conversation-row')).toHaveCount(1);
+  await expect(staff.locator('.conversation-row')).toContainText('陈雨');
+  await staff.getByRole('searchbox').fill('不存在的会话关键词');
+  await staff.getByRole('button', { name: '搜索会话', exact: true }).click();
+  await expect(staff.getByText('没有匹配的会话')).toBeVisible();
+  await staff.getByRole('link', { name: '清除', exact: true }).click();
+  await expect(staff.getByRole('searchbox')).toHaveValue('');
+  await staff.locator('.conversation-row').first().click();
+  await expect(staff.locator('.ai-activity')).toContainText('查询订单');
+  await mkdir('.next/acceptance', { recursive: true });
+  await staff.setViewportSize({ width: 1440, height: 900 });
+  await staff.screenshot({ path: '.next/acceptance/workspace-v2-order.png', animations: 'disabled', fullPage: true });
+
 
   for (const [orderId, decision, expectedText] of [['order-1001', 'approve', '已完成 Mock 退款'], ['order-1002', 'reject', '未执行退款']]) {
     if (decision === 'reject') await page.getByRole('button', { name: '新建会话' }).click();
@@ -154,6 +169,7 @@ try {
     assert.equal(await client.mockRefund.count({ where: { orderId } }), 0);
     assert.equal((await post({ content: '订单', conversationId: approval.conversationId })).status, 409);
     await staff.goto(`${origin}/conversations/${approval.conversationId}`);
+    await expect(staff.locator('.ai-activity').filter({ hasText: '提交退款审批' })).toHaveCount(1);
     await staff.getByRole('button', { name: decision === 'approve' ? '批准退款' : '拒绝退款', exact: true }).click();
     await expect(staff.getByRole('button', { name: '批准退款', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('消息历史')).toContainText(expectedText, { timeout: 10000 });
@@ -177,15 +193,14 @@ try {
   const handoff = await client.conversation.findFirstOrThrow({ where: { customerId: 'customer-1', status: 'human_handoff' }, orderBy: { updatedAt: 'desc' } });
   const executionCount = await client.runtimeExecution.count({ where: { conversationId: handoff.id } });
   // Populate a long history to verify actual viewport visibility, not just DOM text.
-  await client.message.createMany({ data: Array.from({ length: 14 }, (_, i) => ({ conversationId: handoff.id, role: 'system', content: `演示历史 ${i + 1}：这是用于检查滚动位置的历史消息。`, createdAt: new Date(handoff.createdAt.getTime() - 15000 + i * 100) })) });
+  await client.message.createMany({ data: Array.from({ length: 14 }, (_, i) => ({ conversationId: handoff.id, role: 'system', content: i === 13 ? "长文本校验：" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".repeat(40) : `演示历史 ${i + 1}：这是用于检查滚动位置的历史消息。`, createdAt: new Date(handoff.createdAt.getTime() - 15000 + i * 100) })) });
   await page.reload();
   await page.locator('.chat-conversation').first().click();
   await expect(page.getByRole('status')).toContainText('等待人工客服回复');
   const atBottom = locator => locator.evaluate(element => element.scrollHeight - element.scrollTop - element.clientHeight < 8);
   await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
   await staff.goto(origin + '/');
-  await staff.getByRole('combobox').selectOption('human_handoff');
-  await staff.getByRole('button', { name: '筛选', exact: true }).click();
+  await staff.getByRole('navigation', { name: '会话状态筛选' }).getByRole('link', { name: '人工接管', exact: true }).click();
   await staff.locator(`a[href^="/conversations/${handoff.id}"]`).click();
   await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
   const beforeReply = await client.message.findFirstOrThrow({ where: { conversationId: handoff.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
@@ -220,25 +235,43 @@ try {
   await page.getByRole('button', { name: '查看最新消息', exact: true }).click();
   await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
 
-  // Core Workspace UI: both desktop sizes, real conversation, drawer and draft-only shortcuts.
+  // Workspace v2: every collapse combination must release space to the conversation.
   await mkdir('.next/acceptance', { recursive: true });
   const uiConsoleErrors = [];
   const collectUiConsole = message => { if (message.type() === 'error') uiConsoleErrors.push(message.text()); };
   staff.on('console', collectUiConsole);
-  for (const width of [1440, 1280]) {
+  const panelNames = ['功能导航', '会话列表', '上下文面板'];
+  for (const width of [1440, 1280, 1024]) {
     await staff.setViewportSize({ width, height: 900 });
-    await expect(staff.getByRole('dialog')).toHaveCount(0);
-    assert(await staff.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `workspace overflow at ${width}`);
-    const composer = await staff.getByLabel('人工回复', { exact: true }).boundingBox();
-    assert(composer && composer.y + composer.height <= 900, `composer visible at ${width}`);
-    await staff.screenshot({ path: `.next/acceptance/workspace-${width}.png`, animations: 'disabled', fullPage: true });
-    await staff.getByRole('button', { name: '客户信息' }).click();
-    await expect(staff.getByRole('dialog')).toBeVisible();
-    await staff.screenshot({ path: `.next/acceptance/workspace-drawer-${width}.png`, animations: 'disabled', fullPage: true });
-    await staff.keyboard.press('Escape');
-    await expect(staff.getByRole('dialog')).toHaveCount(0);
-    await expect(staff.getByRole('button', { name: '客户信息' })).toBeFocused();
+    const centerWidths = [];
+    for (let mask = 0; mask < 8; mask++) {
+      for (let bit = 0; bit < 3; bit++) {
+        const closed = Boolean(mask & (1 << bit));
+        const action = closed ? '收起' : '展开';
+        const toggle = staff.getByRole('button', { name: action + panelNames[bit], exact: true });
+        if (await toggle.count()) await toggle.click();
+      }
+      const center = await staff.getByRole('region', { name: '当前会话', exact: true }).boundingBox();
+      assert(center && center.width >= 300, 'central workspace minimum width');
+      centerWidths[mask] = center.width;
+      assert(await staff.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'workspace page overflow');
+      assert(await staff.locator('.message-list').evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'message content overflow');
+      const composer = await staff.getByLabel('人工回复', { exact: true }).boundingBox();
+      assert(composer && composer.y + composer.height <= 900, 'composer visible');
+      await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
+      if (mask === 0 || mask === 7) await staff.screenshot({ path: '.next/acceptance/workspace-v2-' + width + '-' + mask + '.png', animations: 'disabled', fullPage: true });
+    }
+    for (let mask = 0; mask < 8; mask++) for (let bit = 0; bit < 3; bit++) {
+      if (mask & (1 << bit)) assert(centerWidths[mask] > centerWidths[mask ^ (1 << bit)], 'each collapsed panel must expand the center');
+    }
+    await staff.reload();
+    for (const name of panelNames) await expect(staff.getByRole('button', { name: '展开' + name, exact: true })).toBeVisible();
   }
+  // Restore a useful review layout; a long unbroken draft must not cause overflow.
+  await staff.setViewportSize({ width: 1440, height: 900 });
+  for (const name of panelNames) await staff.getByRole('button', { name: '展开' + name, exact: true }).click();
+  await staff.getByLabel('人工回复', { exact: true }).fill('长文本'.repeat(800));
+  assert(await staff.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'long draft overflow');
   staff.off('console', collectUiConsole);
   assert.deepEqual(uiConsoleErrors, [], 'workspace console errors');
   await staff.getByRole('button', { name: '您好，我来为您处理。', exact: true }).click();

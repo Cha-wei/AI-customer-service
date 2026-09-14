@@ -1,5 +1,7 @@
 # MVP UI 第一阶段 — Core Workspace UI
 
+本文记录第一阶段历史版本；当前界面与边界参见 `UI_V2.md`。
+
 ## 范围
 
 在现有 Next.js 项目中改造管理端 `/` 和 `/conversations/:id`。

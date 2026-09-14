@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { MessageBubble } from "@/components/workspace/message-bubble";
 import { AIStatus } from "@/components/workspace/ai-status";
 import { MessageComposer } from "@/components/workspace/message-composer";
+import { AIActivity, type ActivityApproval } from "@/components/workspace/ai-activity";
+import type { ExecutionRecord } from "@/modules/agent-runtime/execution-reader";
 import type { Message } from "@/modules/conversations";
 
 interface MessageHistoryProps {
@@ -11,9 +13,11 @@ interface MessageHistoryProps {
   initialMessages: Message[];
   initialCursor: string | null;
   initialStatus?: string;
+  executions?: ExecutionRecord[];
+  approvals?: ActivityApproval[];
 }
 
-export function MessageHistory({ conversationId, initialMessages, initialCursor, initialStatus }: MessageHistoryProps) {
+export function MessageHistory({ conversationId, initialMessages, initialCursor, initialStatus, executions = [], approvals = [] }: MessageHistoryProps) {
   const [status, setStatus] = useState(initialStatus);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -108,10 +112,10 @@ export function MessageHistory({ conversationId, initialMessages, initialCursor,
       {error && <span role="alert">加载失败，请重试。</span>}
     </div>
     <div className="message-list" ref={listRef} onScroll={event => { const list = event.currentTarget; followLatest.current = list.scrollHeight - list.scrollTop - list.clientHeight < 40; }}>
-      {messages.length === 0 ? <EmptyMessages /> : messages.map(message => <MessageBubble key={message.id} message={message} />)}
+      <div className="message-stream">{messages.length === 0 ? <EmptyMessages /> : messages.map(message => <Fragment key={message.id}><MessageBubble message={message} />{executions.filter(execution => execution.messageId === message.id).map(execution => <AIActivity key={execution.id} execution={execution} approval={approvals.find(approval => approval.executionId === execution.id)} />)}</Fragment>)}</div>
     </div>
     {initialStatus === "human_handoff" && <MessageComposer draft={draft} sending={sending} active={status === "human_handoff"} error={replyError} onChange={value => { setDraft(value); baseline.current = null; }} onSubmit={reply} />}
-    {initialStatus !== "human_handoff" && <div className="composer-idle"><span aria-hidden="true">✦</span><p>{status === "resolved" ? "会话已结束，消息记录已保留" : status === "waiting_approval" ? "请先处理上方的退款审批" : "AI 正在负责此会话，转人工后可发送回复"}</p><span className="idle-send" aria-hidden="true">↑</span></div>}
+    {initialStatus !== "human_handoff" && <div className="composer-idle"><span className="ai-badge" aria-hidden="true">AI</span><p>{status === "resolved" ? "会话已结束，消息记录已保留" : status === "waiting_approval" ? "请先处理上方的退款审批" : "AI 正在负责此会话，转人工后可发送回复"}</p><span className="idle-send" aria-hidden="true">↑</span></div>}
   </>;
 }
 

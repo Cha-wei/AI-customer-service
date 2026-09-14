@@ -1,8 +1,9 @@
-import Link from "next/link";
 import { ConversationHeader } from "@/components/workspace/conversation-header";
 import { WorkspaceLayout } from "@/components/workspace/workspace-layout";
 import { ConversationList } from "@/components/workspace/conversation-list";
-import { CustomerDrawer } from "@/components/workspace/customer-drawer";
+import { ContextPanel } from "@/components/workspace/context-panel";
+import { statusLabels } from "@/components/workspace/presentation";
+import { readMessageActivity } from "@/components/workspace/workspace-data";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/modules/admin-auth";
@@ -13,8 +14,6 @@ import { MessageHistory } from "./message-history";
 import { getApprovalService } from "@/modules/approvals/composition-root";
 
 export const dynamic = "force-dynamic";
-const statusLabels: Record<string, string> = { open: "待处理", processing: "处理中", waiting_approval: "待审批", human_handoff: "人工接管", resolved: "已解决" };
-const executionLabels: Record<string, string> = { running: "执行中", completed: "已完成", failed: "失败" };
 
 export default async function ConversationDetail({ params, searchParams }: { params: Promise<{ conversationId: string }>; searchParams?: Promise<{ notice?: string; executionPage?: string; query?: string; status?: string; page?: string }> }) {
   await requireAdminSession();
@@ -26,33 +25,26 @@ export default async function ConversationDetail({ params, searchParams }: { par
   if (executionPage > 1 && page.executions.length === 0) redirect(`/conversations/${encodeURIComponent(conversationId)}`);
   const notice = filters?.notice;
   const approvals = await getApprovalService().list(conversation.id, conversation.customerId);
+  const activity = await readMessageActivity(conversation.id, messages.messages.map(message => message.id));
 
   const inbox = await ConversationList({ filters, selectedId: conversation.id });
-  return <WorkspaceLayout inbox={inbox}>
+  const context = await ContextPanel({ conversation, page, executionPage, filters });
+  return <WorkspaceLayout inbox={inbox} context={context} filter={filters?.status}>
 
     <ConversationHeader customerId={conversation.customerId} createdAt={conversation.createdAt} status={conversation.status} statusLabel={statusLabels[conversation.status] ?? conversation.status}>
-      <CustomerDrawer initialOpen={Boolean(filters?.executionPage)}><section className="drawer-section"><span className="avatar">{conversation.customerId.slice(-2).toUpperCase()}</span><h3>{conversation.customerId}</h3><p className="muted">客户 ID · {conversation.customerId}</p><dl><dt>会话编号</dt><dd className="mono">{conversation.id}</dd><dt>当前状态</dt><dd>{statusLabels[conversation.status]}</dd><dt>最近更新</dt><dd>{formatDate(conversation.updatedAt)}</dd></dl></section><section className="drawer-section"><h3>补充资料</h3><p className="muted">暂无补充客户资料</p></section>
-      <section className="panel" aria-labelledby="executions-title"><div className="panel-heading"><div><h2 id="executions-title">执行记录</h2><p>本页 {page.executions.length} 条 · 按时间从早到晚</p></div></div>
-        {page.executions.length === 0 ? <Empty text="暂无执行记录" /> : <div className="execution-list">{page.executions.map((execution) => <article className="execution" key={execution.id}><div className="execution-heading"><span className={`status execution-${execution.status}`}>{executionLabels[execution.status]}</span><time dateTime={execution.createdAt.toISOString()}>{formatDate(execution.createdAt)}</time></div><dl><div><dt>工具结果</dt><dd>{formatResult(execution.toolResult)}</dd></div><div><dt>失败原因</dt><dd>{execution.errorCode ?? "—"}</dd></div><div><dt>完成时间</dt><dd>{execution.finishedAt ? formatDate(execution.finishedAt) : "—"}</dd></div></dl></article>)}</div>}
-        <nav className="panel-heading" aria-label="执行记录分页">
-          {executionPage > 1 ? <Link href={`/conversations/${conversation.id}?executionPage=${executionPage - 1}`}>上一页</Link> : <span />}
-          <span>第 {executionPage} 页</span>
-          {page.nextOffset !== null ? <Link href={`/conversations/${conversation.id}?executionPage=${executionPage + 1}`}>下一页</Link> : <span />}
-        </nav>
-      </section>
-      </CustomerDrawer>
+
+      {(conversation.status === "open" || conversation.status === "human_handoff") &&
+        <form className="conversation-actions" action={`/api/admin/conversations/${conversation.id}/status`} method="post">
+          {conversation.status === "open" && <button name="status" value="human_handoff">转人工</button>}
+          <button name="status" value="resolved">标记已解决</button>
+        </form>}
     </ConversationHeader>
-    {notice && <p role="alert">{notice === "conflict" ? "会话状态已改变或正在执行，请刷新后重试。" : "更新失败，请稍后重试。"}</p>}
-    {(conversation.status === "open" || conversation.status === "human_handoff") &&
-      <form className="conversation-actions" action={`/api/admin/conversations/${conversation.id}/status`} method="post">
-        {conversation.status === "open" && <button name="status" value="human_handoff">转人工</button>}
-        <button name="status" value="resolved">标记已解决</button>
-      </form>}
-    {conversation.status === "processing" && <p>正在执行，请等待执行结束后再更新状态。</p>}
+    {conversation.status === "processing" && <p className="workspace-notice">正在执行，请等待执行结束后再更新状态。</p>}
+    {notice && <p className="workspace-notice" role="alert">{notice === "conflict" ? "会话状态已改变或正在执行，请刷新后重试。" : "更新失败，请稍后重试。"}</p>}
     {approvals.length > 0 && <section className="approval-panel" aria-label="退款审批"><div className="panel-heading"><h2>退款审批</h2></div>
-      {approvals.length === 0 ? <p>暂无退款审批</p> : approvals.map(approval => <article className="execution" key={approval.id}>
+      {approvals.map(approval => <article className="execution" key={approval.id}>
         <p>订单：{approval.orderId} · 客户：{approval.customerId}</p>
-        <p>Policy：{approval.reason}</p>
+        <p>审批原因：{approval.reason}</p>
         <p>状态：{({ pending: "待审批", approved: "已批准并退款", rejected: "已拒绝", failed: "批准后执行失败" } as Record<string, string>)[approval.status]}</p>
         {approval.result && <p>退款结果：{approval.result}</p>}
         {approval.status === "pending" && <form action={`/api/admin/conversations/${conversation.id}/approvals`} method="post">
@@ -63,7 +55,7 @@ export default async function ConversationDetail({ params, searchParams }: { par
     </section>}
     <div className="conversation-thread">
       <section className="thread-panel" aria-label="消息记录">
-        <MessageHistory key={`${conversation.id}:${conversation.status}`} initialStatus={conversation.status} conversationId={conversation.id} initialMessages={messages.messages} initialCursor={messages.nextCursor} />
+        <MessageHistory key={`${conversation.id}:${conversation.status}`} initialStatus={conversation.status} conversationId={conversation.id} initialMessages={messages.messages} initialCursor={messages.nextCursor} executions={activity} approvals={approvals.map(({ executionId, orderId }) => ({ executionId, orderId }))} />
       </section>
 
     </div>
@@ -77,7 +69,3 @@ async function loadConversation(conversationId: string, executionPage: number) {
     return { conversation, messages, page };
   } catch (error) { if (error instanceof ConversationNotFoundError) notFound(); throw error; }
 }
-
-function Empty({ text }: { text: string }) { return <div className="state-card compact"><span className="state-icon" aria-hidden="true">◎</span><p>{text}</p></div>; }
-function formatResult(value: unknown): string { if (value === null || value === undefined) return "—"; return typeof value === "string" ? value : JSON.stringify(value, null, 2); }
-function formatDate(date: Date): string { return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(date); }

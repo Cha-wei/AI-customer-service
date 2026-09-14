@@ -9,5 +9,5 @@ const states: Record<string, { title: string; detail: string }> = {
 export function AIStatus({ status }: { status: string }) {
   const state = states[status];
   if (!state) return null;
-  return <div className={`ai-status ai-status-${status}`} role="status"><span className="ai-status-symbol" aria-hidden="true">{status === "resolved" ? "✓" : "✦"}</span><div><strong>{state.title}</strong><span>{state.detail}</span></div>{status === "processing" && <span className="processing-dot" aria-hidden="true" />}</div>;
+  return <div className={`ai-status ai-status-${status}`} role="status"><span className="ai-badge" aria-hidden="true">{status === "resolved" ? "✓" : "AI"}</span><div><strong>{state.title}</strong><span>{state.detail}</span></div>{status === "processing" && <span className="processing-dot" aria-hidden="true" />}</div>;
 }

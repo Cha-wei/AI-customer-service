@@ -1,45 +1,49 @@
 import Link from "next/link";
 import { getConversationService } from "@/modules/conversations/composition-root";
 import { CONVERSATION_STATUSES, isConversationStatus } from "@/modules/conversations/domain";
-
-
-const statusLabels: Record<string, string> = { open: "待处理", processing: "处理中", waiting_approval: "待审批", human_handoff: "人工接管", resolved: "已解决" };
+import { customerLabel, formatDate, relativeTime, resolveDisplayQuery, statusLabels } from "./presentation";
+import { WorkspaceIcon } from "./workspace-icon";
 
 export type InboxFilters = { query?: string; status?: string; page?: string };
 export async function ConversationList({ filters = {}, selectedId }: { filters?: InboxFilters; selectedId?: string }) {
   const query = filters.query?.trim() ?? "";
   const status = isConversationStatus(filters.status ?? "") ? filters.status as (typeof CONVERSATION_STATUSES)[number] : "";
   const requestedPage = /^\d+$/.test(filters.page ?? "") ? Number(filters.page) : 1;
-  const result = await getConversationService().list({ query, status, page: requestedPage });
+  const result = await getConversationService().list({ query: resolveDisplayQuery(query), status, page: requestedPage });
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const currentPage = result.page;
-  const pageHref = (page: number) => `${selectedId ? `/conversations/${selectedId}` : "/"}?${new URLSearchParams({ query: filters.query ?? "", status: status ?? "", page: String(page) })}`;
+  const basePath = selectedId ? `/conversations/${selectedId}` : "/";
+  const pageHref = (page: number) => `${basePath}?${new URLSearchParams({ query: filters.query ?? "", status, page: String(page) })}`;
+  // This async Server Component renders a request-time snapshot, not a ticking client clock.
+  // eslint-disable-next-line react-hooks/purity
+  const now = Date.now();
   return <div className="inbox-content">
-    <header className="inbox-heading"><div><p className="eyebrow">WORKSPACE</p><h1>会话管理</h1></div><span className="inbox-count">{result.total}</span></header>
-    <section className="inbox-panel" aria-labelledby="conversation-list-title">
-      <div className="panel-heading"><div><h2 id="conversation-list-title">全部会话</h2><p>按最近更新时间排序</p></div></div>
-      <form className="filters" method="get" action={selectedId ? `/conversations/${selectedId}` : "/"}>
-        <label><span>搜索</span><input defaultValue={filters.query} name="query" placeholder="客户 ID 或全部历史消息" type="search" /></label>
-        <label><span>状态</span><select defaultValue={status} name="status"><option value="">全部状态</option>{CONVERSATION_STATUSES.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}</select></label>
-        <button type="submit">筛选</button>
-        {(query || status) && <Link className="clear-link" href="/">清除</Link>}
-      </form>
-      {result.conversations.length === 0 ? <div className="state-card"><span className="state-icon" aria-hidden="true">◎</span><h3>{query || status ? "没有匹配的会话" : "暂无会话"}</h3><p>{query || status ? "请调整搜索条件或状态筛选。" : "客户发起咨询后，会话会显示在这里。"}</p></div> :
-        <div className="conversation-list">{result.conversations.map((conversation) =>
-          <Link className={`conversation-row ${selectedId === conversation.id ? "selected" : ""}`} aria-current={selectedId === conversation.id ? "page" : undefined} href={`/conversations/${conversation.id}${query || status || currentPage > 1 ? `?${new URLSearchParams({ query: filters.query ?? "", status, page: String(currentPage) })}` : ""}`} key={conversation.id}>
-            <span className="avatar" aria-hidden="true">{conversation.customerId.slice(0, 2).toUpperCase()}</span>
-            <span className="conversation-main"><span className="conversation-meta"><strong>{conversation.customerId}</strong><span className={`status status-${conversation.status}`}>{statusLabels[conversation.status] ?? conversation.status}</span></span><span className="latest-message">{conversation.latestMessage?.content ?? "暂无消息"}</span></span>
-            <time dateTime={conversation.updatedAt.toISOString()}>{formatDate(conversation.updatedAt)}</time><span className="chevron" aria-hidden="true">›</span>
-          </Link>)}</div>}
-      <nav className="panel-heading" aria-label="会话分页">
-        {currentPage > 1 ? <Link href={pageHref(currentPage - 1)}>上一页</Link> : <span />}
-        <span>第 {currentPage} / {totalPages} 页</span>
-        {currentPage < totalPages ? <Link href={pageHref(currentPage + 1)}>下一页</Link> : <span />}
-      </nav>
-    </section>
+    <header className="inbox-heading"><div><h1>会话队列 <span className="inbox-count">{result.total}</span></h1><p>按最近更新时间排序</p></div></header>
+    <form className="queue-search" key={query} method="get" action={basePath}>
+      <label className="sr-only" htmlFor="queue-query">搜索</label>
+      <input id="queue-query" defaultValue={filters.query} name="query" placeholder="搜索客户、消息或订单号" type="search" title="支持客户展示名、客户编号和历史消息中的订单号" />
+      {status && <input type="hidden" name="status" value={status} />}
+      <button type="submit" aria-label="搜索会话" title="搜索会话"><WorkspaceIcon name="search" /></button>
+    </form>
+    <nav className="queue-filters" aria-label="会话状态筛选">
+      {["", ...CONVERSATION_STATUSES].map(value => <Link key={value} className={status === value ? "active" : ""} aria-current={status === value ? "page" : undefined} href={`${basePath}?${new URLSearchParams({ query, status: value })}`}>{value ? statusLabels[value as keyof typeof statusLabels] : "全部"}</Link>)}
+    </nav>
+    {query && <div className="search-summary"><span>搜索：{query}</span><Link href={`${basePath}?${new URLSearchParams({ status })}`}>清除</Link></div>}
+    {result.conversations.length === 0 ? <div className="queue-empty"><WorkspaceIcon name="search" /><h3>{query || status ? "没有匹配的会话" : "暂无会话"}</h3><p>{query || status ? "试试其他关键词或状态。" : "客户发起咨询后，会话会显示在这里。"}</p></div> :
+      <div className="conversation-list">{result.conversations.map(conversation => {
+        const customer = customerLabel(conversation.customerId);
+        const text = conversation.latestMessage?.content ?? "";
+        const topic = /退款|refund/i.test(text) ? "退款相关" : /订单|物流|order/i.test(text) ? "订单相关" : "";
+        const human = conversation.status === "human_handoff" || conversation.status === "waiting_approval";
+        return <Link className={`conversation-row ${selectedId === conversation.id ? "selected" : ""}`} aria-current={selectedId === conversation.id ? "page" : undefined} href={`/conversations/${conversation.id}${query || status || currentPage > 1 ? `?${new URLSearchParams({ query, status, page: String(currentPage) })}` : ""}`} key={conversation.id}>
+          <span className="avatar" aria-hidden="true">{customer.name.slice(0, 1)}</span>
+          <span className="conversation-main"><span className="conversation-meta"><strong>{customer.name}</strong><time title={formatDate(conversation.updatedAt)} dateTime={conversation.updatedAt.toISOString()}>{relativeTime(conversation.updatedAt, now)}</time></span><span className="customer-code" title={conversation.customerId}>客户编号 {customer.code}</span><span className="latest-message">{text || "暂无消息"}</span><span className="queue-tags"><span className={`status status-${conversation.status}`}>{statusLabels[conversation.status]}</span>{topic && <span className="topic-label" title="依据最近消息关键词展示，不代表 AI 意图识别结果">{topic}</span>}{human && <span className="attention-dot" title="需要人工处理" aria-label="需要人工处理" />}</span></span>
+        </Link>;
+      })}</div>}
+    <nav className="queue-pagination" aria-label="会话分页">
+      {currentPage > 1 ? <Link href={pageHref(currentPage - 1)}>上一页</Link> : <span />}
+      <span>第 {currentPage} / {totalPages} 页</span>
+      {currentPage < totalPages ? <Link href={pageHref(currentPage + 1)}>下一页</Link> : <span />}
+    </nav>
   </div>;
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }

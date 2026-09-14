@@ -70,9 +70,11 @@ now drives approve/reject through the administrator browser, tests staff draft r
 and seeds a long synthetic history to check viewport scrolling and reading-position
 preservation. Customer/admin screenshots are saved under ignored `.next/acceptance/`.
 
-Core Workspace UI acceptance also verifies 1440px and 1280px desktop widths,
-visible staff composer, no page overflow, drawer Escape/focus restoration and
-draft-only quick replies. Stable screenshots disable transient animations and
-are saved as `workspace-*.png`. The workspace interaction segment checks console
-errors; the complete browser flow continues to check uncaught page errors.
-See `UI_PHASE_1.md` for component and data boundaries.
+Workspace v2 acceptance verifies 1440px, 1280px and 1024px desktop widths and all
+eight combinations of collapsed navigation, inbox and context. Each collapsed
+panel must increase the central width; draft visibility, long-text overflow,
+preference persistence, display-name search and draft-only replies are checked.
+Unit tests protect evidence-backed AI actions and conversation-scoped UI reads.
+Stable screenshots disable transient animations and are saved as `workspace-v2-*.png`.
+The workspace segment checks console errors; the complete browser flow checks
+uncaught page errors. See `UI_V2.md` for component, data and deferred-work boundaries.

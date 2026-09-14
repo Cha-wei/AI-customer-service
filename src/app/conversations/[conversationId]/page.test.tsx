@@ -4,6 +4,7 @@ import ConversationDetail from "./page";
 const { getHeader, listMessages, listExecutions } = vi.hoisted(() => ({ getHeader: vi.fn(), listMessages: vi.fn(), listExecutions: vi.fn() }));
 vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/components/workspace/workspace-data", () => ({ readMessageActivity: async () => [] }));
 vi.mock("@/modules/approvals/composition-root", () => ({ getApprovalService: () => ({ list: async () => [] }) }));
 vi.mock("@/modules/conversations/composition-root", () => ({
   getConversationService: () => ({ getHeader, listMessages, list: async () => ({ conversations: [], page: 1, pageSize: 20, total: 0 }) }),
@@ -39,7 +40,7 @@ describe("conversation detail page", () => {
     });
 
     render(await ConversationDetail({ params: Promise.resolve({ conversationId: "conversation-1" }) }));
-    expect(screen.getByRole("heading", { name: "customer-1" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "陈雨" })).toBeInTheDocument();
     expect(screen.getByText("我的订单什么时候到？")).toBeInTheDocument();
     expect(screen.getByText("订单正在运输中。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "加载更早消息" })).toBeInTheDocument();

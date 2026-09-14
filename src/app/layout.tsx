@@ -5,8 +5,8 @@ import "./globals.css";
 import "./workspace.css";
 
 export const metadata: Metadata = {
-  title: "客服工作台",
-  description: "AI Customer Service Workbench 管理界面",
+  title: "AI 客服工作台",
+  description: "客服会话处理与 AI 辅助工作台",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
