@@ -47,7 +47,7 @@ describe("conversation detail page", () => {
     expect(screen.getByText("我的订单什么时候到？")).toBeInTheDocument();
     expect(screen.getByText("订单正在运输中。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "加载更早消息" })).toBeInTheDocument();
-    expect(screen.getByText(/Mock Express/)).toBeInTheDocument();
+    expect(screen.getByText(/"carrier": "Mock Express"/)).toBeInTheDocument();
     expect(screen.getByText("已完成")).toBeInTheDocument();
     expect(listExecutions).toHaveBeenCalledWith("conversation-1", 0);
   });
