@@ -1,5 +1,11 @@
 # Testing
 
+## Selecting checks
+
+Use `DEVELOPMENT_RULES.md` sections 3–4 for validation scope and reuse of passed checks.
+The commands below are a reference, not a checklist to run in full for every task.
+Acceptance reports describe their recorded runs; repeat those suites only when the task requires that coverage.
+
 `pnpm test:e2e:chat:https` runs the same isolated flow through a real loopback TLS
 proxy (PowerShell 7 required). It creates two temporary local accounts through the CLI, drives both login forms,
 and exercises account-switch cleanup, disable/enable, throttling and durable
@@ -45,7 +51,7 @@ pnpm lint
 pnpm build
 ```
 
-Before a stage is committed, run all relevant checks and ensure no secrets or local database files are included.
+Stage completion and sensitive-file checks follow `DEVELOPMENT_RULES.md` section 3; do not repeat that workflow here.
 
 Refund integration tests apply every migration to an isolated temporary SQLite database.
 They cover Policy gating, pending/approve/reject, duplicate and concurrent decisions,

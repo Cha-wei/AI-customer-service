@@ -286,4 +286,4 @@ checks anonymous access, impersonation, foreign records and forged message roles
 - `src/test`: shared test setup
 - `prisma`: local SQLite data model configuration
 
-See `PRD.md`, `ARCHITECTURE.md`, `DEVELOPMENT_RULES.md`, and `TESTING.md` before implementing a new major feature.
+Follow `AGENTS.md` to select task-relevant documentation; no full-document reading checklist is required.
