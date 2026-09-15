@@ -100,6 +100,8 @@
 .workspace .conversation-row time { font-size: 10px; color: var(--ws-muted); white-space: nowrap; }
 .customer-code { display: block; color: #999eaa; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace .latest-message { font-size: 12px; margin: 4px 0; color: #747b8b; }
+.message-sender { font-weight: 500; color: #52627a; }
+.queue-waiting { display: block; margin-top: 4px; font-size: 10px; color: var(--ws-amber); }
 .queue-tags { display: flex; align-items: center; gap: var(--ws-space-2); }
 .workspace .status { border-radius: 4px; font-size: 10px; font-weight: 500; padding: 1px 6px; }
 .workspace .status-open { background: #edf0f5; color: #717a8c; }
