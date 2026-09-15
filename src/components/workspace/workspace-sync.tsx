@@ -3,7 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-export function WorkspaceSync({ conversationId, revision }: { conversationId: string; revision: string }) {
+export function WorkspaceSync({ conversationId, requestUrl, revision }: { revision: string } & ({ conversationId: string; requestUrl?: never } | { requestUrl: string; conversationId?: never })) {
+  const endpoint = requestUrl ?? `/api/admin/conversations/${encodeURIComponent(conversationId!)}/revision`;
   const router = useRouter();
   const [error, setError] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -20,7 +21,7 @@ export function WorkspaceSync({ conversationId, revision }: { conversationId: st
       controller = new AbortController();
       const timeout = setTimeout(() => controller?.abort(), 10000);
       try {
-        const response = await fetch(`/api/admin/conversations/${encodeURIComponent(conversationId)}/revision`, { cache: "no-store", signal: controller.signal });
+        const response = await fetch(endpoint, { cache: "no-store", signal: controller.signal });
         if (!response.ok || response.redirected) throw new Error();
         const data = await response.json();
         if (typeof data.revision !== "string") throw new Error();
@@ -43,6 +44,6 @@ export function WorkspaceSync({ conversationId, revision }: { conversationId: st
     window.addEventListener("online", resume);
     void check();
     return () => { disposed = true; clearTimeout(timer); controller?.abort(); document.removeEventListener("visibilitychange", resume); window.removeEventListener("online", resume); };
-  }, [conversationId, revision, router]);
+  }, [endpoint, revision, router]);
   return <p className="workspace-sync" role={error ? "alert" : "status"}>{error ? "同步暂时中断，当前信息可能已过期；正在自动重试。" : pending ? "正在更新会话…" : "自动同步已开启 · 每 3 秒检查状态变化"}</p>;
 }

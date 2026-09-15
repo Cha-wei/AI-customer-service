@@ -1,3 +1,4 @@
+vi.mock("@/components/workspace/workspace-sync", () => ({ WorkspaceSync: () => null }));
 import { render, screen } from "@testing-library/react";
 import Home from "./page";
 
