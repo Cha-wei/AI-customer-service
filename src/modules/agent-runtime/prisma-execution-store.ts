@@ -27,7 +27,7 @@ export class PrismaExecutionStore implements ExecutionStore {
         status: errorCode ? "failed" : "completed", errorCode: errorCode ?? null, finishedAt: new Date(), toolResult: toolResult === null ? null : JSON.stringify(toolResult),
       } });
       if (!claimed.count) throw new RuntimeConflictError("Execution is no longer active.");
-      const updated = await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing" }, data: { status } });
+      const updated = await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing" }, data: { status, ...(status === "human_handoff" ? { humanHandoffAt: new Date() } : {}) } });
       if (!updated.count) throw new RuntimeConflictError("Conversation state changed.");
       const reply = await tx.message.create({ data: { conversationId: execution.conversationId, role: "agent", content } });
       return { ...reply, role: "agent" };
@@ -38,7 +38,7 @@ export class PrismaExecutionStore implements ExecutionStore {
     await this.client.$transaction(async (tx) => {
       const execution = await tx.runtimeExecution.findUniqueOrThrow({ where: { id } });
       const changed = await tx.runtimeExecution.updateMany({ where: { id, status: "running" }, data: { status: "failed", errorCode: "EXECUTION_FAILED", finishedAt: new Date() } });
-      if (changed.count) await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing" }, data: { status: "human_handoff" } });
+      if (changed.count) await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing" }, data: { status: "human_handoff", humanHandoffAt: new Date() } });
     });
   }
 
@@ -47,7 +47,7 @@ export class PrismaExecutionStore implements ExecutionStore {
       const expired = await tx.runtimeExecution.findMany({ where: { status: "running", createdAt: { lt: before } } });
       for (const execution of expired) {
         await tx.runtimeExecution.update({ where: { id: execution.id }, data: { status: "failed", errorCode: "EXECUTION_EXPIRED", finishedAt: new Date() } });
-        await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing" }, data: { status: "human_handoff" } });
+        await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing" }, data: { status: "human_handoff", humanHandoffAt: new Date() } });
       }
       return expired.length;
     });

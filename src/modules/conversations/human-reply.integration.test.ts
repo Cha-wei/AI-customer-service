@@ -7,6 +7,7 @@ import { join, relative, resolve, isAbsolute } from "node:path";
 import { replyFromHuman } from "./human-reply";
 import { transitionFromAdmin } from "./admin-transition";
 import { PrismaExecutionStore } from "../agent-runtime/prisma-execution-store";
+import { PrismaConversationRepository } from "./prisma-repository";
 
 const directory = mkdtempSync(join(tmpdir(), "human-test-"));
 const url = `file:${join(directory, "test.db").replaceAll("\\", "/")}`;
@@ -68,4 +69,39 @@ it("manual takeover uses the same state lock as AI claiming", async () => {
   const latest = await client.message.findFirstOrThrow({ where: { conversationId: id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
   await expect(new PrismaExecutionStore(client).begin(id, messageId)).rejects.toThrow();
   expect((await replyFromHuman(client, id, "人工已接手", latest.id)).role).toBe("human");
+});
+
+it("keeps handoff time through notifications and failed replies, then records first human reply across history", async () => {
+  const { id } = await fixture("open");
+  const before = Date.now();
+  await transitionFromAdmin(client, id, "human_handoff");
+  const repository = new PrismaConversationRepository(client);
+  const summary = async () => (await repository.list({ page: 1, pageSize: 20, query: "", status: "" })).conversations.find(c => c.id === id)!;
+  const initial = await summary();
+  expect(initial.hasHumanReply).toBe(false);
+  expect(initial.humanHandoffAt!.getTime()).toBeGreaterThanOrEqual(before);
+  await repository.appendMessage({ conversationId: id, role: "customer", content: "请尽快处理" });
+  await expect(replyFromHuman(client, id, "过期回复", "stale")).rejects.toThrow();
+  expect(await summary()).toMatchObject({ humanHandoffAt: initial.humanHandoffAt, hasHumanReply: false });
+  const latest = (await summary()).latestMessage!;
+  await replyFromHuman(client, id, "已接手", latest.id);
+  await repository.appendMessage({ conversationId: id, role: "customer", content: "后续问题" });
+  expect(await summary()).toMatchObject({ humanHandoffAt: initial.humanHandoffAt, hasHumanReply: true, latestMessage: { role: "customer" } });
+  await transitionFromAdmin(client, id, "resolved");
+  expect(await summary()).toMatchObject({ humanHandoffAt: initial.humanHandoffAt, status: "resolved" });
+});
+
+it.each(["complete", "fail", "recover"] as const)("records handoff time through runtime %s without resetting it on retry", async mode => {
+  const { id, messageId } = await fixture("open");
+  const store = new PrismaExecutionStore(client);
+  const executionId = await store.begin(id, messageId);
+  const before = Date.now();
+  if (mode === "complete") await store.complete(executionId, "转人工", "human_handoff", null);
+  else if (mode === "fail") await store.fail(executionId);
+  else await store.recoverExpired(new Date(Date.now() + 1000));
+  const record = await client.conversation.findUniqueOrThrow({ where: { id } });
+  expect(record.humanHandoffAt!.getTime()).toBeGreaterThanOrEqual(before);
+  await store.fail(executionId);
+  await store.recoverExpired(new Date(Date.now() + 1000));
+  expect((await client.conversation.findUniqueOrThrow({ where: { id } })).humanHandoffAt).toEqual(record.humanHandoffAt);
 });

@@ -34,6 +34,8 @@ export interface ConversationSummary {
   customerId: string;
   status: ConversationStatus;
   latestMessage: Message | null;
+  humanHandoffAt?: Date | null;
+  hasHumanReply?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

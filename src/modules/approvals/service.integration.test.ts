@@ -38,6 +38,9 @@ afterAll(async () => { await client.$disconnect(); rmSync(directory, { recursive
 async function request(message = "帮我退款 order-1001", customerId = "customer-1") {
   const conversation = await conversations.create({ customerId, initialMessage: message });
   const result = await runtime.run(conversation.id);
+  const stored = await client.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+  if (result.status === "human_handoff") expect(stored.humanHandoffAt).toBeInstanceOf(Date);
+  else expect(stored.humanHandoffAt).toBeNull();
   const list = await approvals.list(conversation.id, customerId);
   return { conversation, result, approval: list[0] };
 }
@@ -52,6 +55,7 @@ it("requires Policy approval, persists a pending request without execution, then
   expect(execute).not.toHaveBeenCalled();
   await approvals.decide(conversation.id, approval.id, "approve");
   expect((await conversations.get(conversation.id)).status).toBe("resolved");
+  expect((await client.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).humanHandoffAt).toBeNull();
   expect(await client.mockRefund.count()).toBe(1);
   expect((await approvals.list(conversation.id, "customer-1"))[0].result).toContain('"ok":true');
   await expect(approvals.decide(conversation.id, approval.id, "approve")).rejects.toThrow();
@@ -68,6 +72,7 @@ it("rejects without calling the refund tool", async () => {
   expect(execute).not.toHaveBeenCalled();
   expect((await conversations.get(conversation.id)).status).toBe("human_handoff");
   expect((await approvals.list(conversation.id, "customer-1"))[0].status).toBe("rejected");
+  expect((await client.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).humanHandoffAt).toBeInstanceOf(Date);
 });
 
 it("isolates approval reads, decision IDs and order ownership", async () => {
@@ -101,6 +106,7 @@ it.each(["throw", "failure"])("records %s failure and never retries a decided ap
   await approvals.decide(conversation.id, approval.id, "approve");
   const stored = (await approvals.list(conversation.id, "customer-1"))[0];
   expect(stored.status).toBe("failed");
+  expect((await client.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).humanHandoffAt).toBeInstanceOf(Date);
   expect(stored.result).not.toContain("private details");
   expect((await conversations.get(conversation.id)).status).toBe("human_handoff");
   await expect(approvals.decide(conversation.id, approval.id, "approve")).rejects.toThrow();

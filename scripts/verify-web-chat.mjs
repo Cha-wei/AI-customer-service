@@ -195,6 +195,7 @@ try {
     await staff.bringToFront();
     await expect(staff.getByRole('button', { name: '批准退款', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('消息历史')).toContainText(expectedText, { timeout: 10000 });
+    if (decision === 'reject') await expect(staff.locator(`a.conversation-row[href^="/conversations/${approval.conversationId}"]`)).toContainText('待人工首次回复', { timeout: 15000 });
     assert.equal(await client.mockRefund.count({ where: { orderId } }), decision === 'approve' ? 1 : 0, 'approval result agrees with actual Mock refund');
     await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
   }
@@ -208,6 +209,7 @@ try {
   await expect(staff.locator('.context-content')).toContainText('未找到匹配订单');
   await staff.getByRole('button', { name: '转人工', exact: true }).click();
   await expect(staff.locator('.context-content .ai-status')).toContainText('人工接管中');
+  await expect(staff.locator(`a.conversation-row[href^="/conversations/${emptyOrderConversation.id}"]`)).toContainText('等待人工', { timeout: 15000 });
   await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
   await otherPage.getByRole('button', { name: '新建会话' }).click();
   await otherPage.getByLabel('消息', { exact: true }).fill('你们支持火星定居咨询吗？');
@@ -217,6 +219,11 @@ try {
   assert.equal(await client.approval.count({ where: { conversationId: unknownConversation.id } }), 0);
   await staff.goto(`${origin}/conversations/${unknownConversation.id}`);
   await expect(staff.locator('.context-next-action')).toContainText('继续人工回复');
+  const firstReplyRow = staff.locator(`a.conversation-row[href^="/conversations/${unknownConversation.id}"]`);
+  await expect(firstReplyRow).toContainText('待人工首次回复');
+  await expect(firstReplyRow).toContainText('等待人工');
+  await expect(firstReplyRow.locator('.queue-waiting')).toHaveAttribute('title', /进入人工接管/);
+  await expect(firstReplyRow).not.toContainText('客户等待');
   await staff.screenshot({ path: '.next/acceptance/trial-unknown.png', fullPage: true });
   // A failed send preserves the draft, and a later successful send still works.
   await page.getByRole('button', { name: '新建会话' }).click();
@@ -246,6 +253,12 @@ try {
   await staff.getByRole('navigation', { name: '会话状态筛选' }).getByRole('link', { name: '人工接管', exact: true }).click();
   await staff.locator(`a[href^="/conversations/${handoff.id}"]`).click();
   await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
+  const handoffRow = staff.locator(`a.conversation-row[href^="/conversations/${handoff.id}"]`);
+  await expect(handoffRow).toContainText('待人工首次回复');
+  const replyObserver = await staffContext.newPage();
+  await replyObserver.goto(`${origin}/conversations/${handoff.id}`);
+  await expect(replyObserver.locator(`a.conversation-row[href^="/conversations/${handoff.id}"]`)).toContainText('待人工首次回复');
+  await staff.bringToFront();
   const beforeReply = await client.message.findFirstOrThrow({ where: { conversationId: handoff.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
   await staff.getByLabel('人工回复', { exact: true }).fill('您好，人工客服已接手，请说明问题。');
   await staff.route(`**/api/admin/conversations/${handoff.id}/messages`, route => route.request().method() === 'POST' ? route.abort() : route.continue());
@@ -255,6 +268,12 @@ try {
   await staff.unroute(`**/api/admin/conversations/${handoff.id}/messages`);
   await staff.getByRole('button', { name: '发送人工回复' }).click();
   await expect(page.getByLabel('消息历史')).toContainText('人工客服已接手');
+  await expect(handoffRow).toContainText('人工跟进', { timeout: 15000 });
+  await expect(handoffRow).not.toContainText('等待人工');
+  await replyObserver.bringToFront();
+  await expect(replyObserver.locator(`a.conversation-row[href^="/conversations/${handoff.id}"]`)).toContainText('人工跟进', { timeout: 15000 });
+  await replyObserver.close();
+  await staff.bringToFront();
   await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
   const humanPost = (activeCookie, activeOrigin = origin) => request(`/api/admin/conversations/${handoff.id}/messages`, { method: 'POST', headers: { cookie: activeCookie, origin: activeOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ content: 'duplicate', lastMessageId: beforeReply.id }) });
   assert.equal((await humanPost(adminCookie)).status, 409, 'repeated reply denied');

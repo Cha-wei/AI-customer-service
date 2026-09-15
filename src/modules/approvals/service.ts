@@ -45,7 +45,7 @@ export class ApprovalService {
           await tx.approval.create({ data: { conversationId: execution.conversationId, executionId, customerId, orderId, reason: policy.reason } });
         }
       }
-      if (!(await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing", customerId }, data: { status } })).count) throw new RuntimeConflictError("Conversation state changed.");
+      if (!(await tx.conversation.updateMany({ where: { id: execution.conversationId, status: "processing", customerId }, data: { status, ...(status === "human_handoff" ? { humanHandoffAt: new Date() } : {}) } })).count) throw new RuntimeConflictError("Conversation state changed.");
       const reply = await tx.message.create({ data: { conversationId: execution.conversationId, role: "agent", content } });
       return { status, reply: { ...reply, role: "agent" }, toolResult: null };
     });
@@ -78,7 +78,7 @@ export class ApprovalService {
       }
       await tx.message.create({ data: { conversationId, role: "system", content: decision === "approve" ? "管理员已批准退款申请。" : "管理员已拒绝退款申请。" } });
       await tx.message.create({ data: { conversationId, role: "agent", content } });
-      await tx.conversation.update({ where: { id: conversationId }, data: { status: result?.ok ? "resolved" : "human_handoff" } });
+      await tx.conversation.update({ where: { id: conversationId }, data: { status: result?.ok ? "resolved" : "human_handoff", ...(!result?.ok ? { humanHandoffAt: new Date() } : {}) } });
       return tx.approval.findUniqueOrThrow({ where: { id: approvalId } });
     });
   }

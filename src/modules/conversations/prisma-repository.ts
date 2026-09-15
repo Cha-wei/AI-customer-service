@@ -26,6 +26,7 @@ type ConversationWithMessages = Prisma.ConversationGetPayload<{
 
 type ConversationWithLatestMessage = ConversationRecord & {
   messages: Prisma.MessageGetPayload<Record<string, never>>[];
+  _count: { messages: number };
 };
 
 export class PrismaConversationRepository implements ConversationRepository {
@@ -36,6 +37,7 @@ export class PrismaConversationRepository implements ConversationRepository {
       data: {
         customerId: input.customerId,
         status: input.status,
+        ...(input.status === "human_handoff" ? { humanHandoffAt: new Date() } : {}),
         messages: {
           create: input.initialMessage,
         },
@@ -145,6 +147,7 @@ export class PrismaConversationRepository implements ConversationRepository {
         skip: (page - 1) * input.pageSize,
         take: input.pageSize,
         include: {
+          _count: { select: { messages: { where: { role: "human" } } } },
           messages: {
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: 1,
@@ -162,7 +165,7 @@ export class PrismaConversationRepository implements ConversationRepository {
     try {
       const record = await this.client.conversation.update({
         where: { id: conversationId },
-        data: { status },
+        data: { status, ...(status === "human_handoff" ? { humanHandoffAt: new Date() } : {}) },
         include: {
           messages: {
             orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -209,6 +212,8 @@ function mapSummary(record: ConversationWithLatestMessage): ConversationSummary 
     customerId: record.customerId,
     status: record.status,
     latestMessage: record.messages[0] ? mapMessage(record.messages[0]) : null,
+    humanHandoffAt: record.humanHandoffAt,
+    hasHumanReply: record._count.messages > 0,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

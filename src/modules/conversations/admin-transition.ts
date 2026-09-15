@@ -9,7 +9,7 @@ export async function transitionFromAdmin(client: PrismaClient, id: string, targ
   await client.$transaction(async (tx) => {
     const changed = await tx.conversation.updateMany({
       where: { id, status: { in: allowed }, executions: { none: { status: "running" } } },
-      data: { status: target },
+      data: { status: target, ...(target === "human_handoff" ? { humanHandoffAt: new Date() } : {}) },
     });
     if (!changed.count) throw new AdminTransitionConflict();
     await tx.message.create({ data: {

@@ -23,6 +23,8 @@ describe("PrismaConversationRepository", () => {
     await client.$executeRawUnsafe(
       'CREATE TABLE IF NOT EXISTS "Message" ("id" TEXT NOT NULL PRIMARY KEY, "conversationId" TEXT NOT NULL, "role" TEXT NOT NULL, "content" TEXT NOT NULL, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, CONSTRAINT "Message_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation" ("id") ON DELETE CASCADE ON UPDATE CASCADE)',
     );
+    const columns = await client.$queryRawUnsafe<{ name: string }[]>('PRAGMA table_info("Conversation")');
+    if (!columns.some(column => column.name === "humanHandoffAt")) await client.$executeRawUnsafe('ALTER TABLE "Conversation" ADD COLUMN "humanHandoffAt" DATETIME');
   });
 
   beforeEach(async () => {
