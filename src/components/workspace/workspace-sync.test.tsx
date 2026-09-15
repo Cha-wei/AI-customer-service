@@ -46,3 +46,25 @@ it("pauses while hidden and aborts outstanding requests on unmount", async () =>
   view.unmount();
   expect(signal?.aborted).toBe(true);
 });
+
+it("distinguishes expired sessions and recovers after login without navigating away", async () => {
+  const fetcher = vi.fn().mockImplementation(async () => new Response(null, { status: 401 }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<WorkspaceSync conversationId="c" revision="v1" />);
+  await act(async () => {});
+  expect(screen.getByRole("alert")).toHaveTextContent("管理员登录已失效");
+  expect(screen.getByRole("link", { name: "在新窗口重新登录" })).toHaveAttribute("target", "_blank");
+  expect(refresh).not.toHaveBeenCalled();
+  fetcher.mockImplementation(async () => response("v2"));
+  await act(async () => { window.dispatchEvent(new Event("online")); });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+it("recognizes the admin login redirect", async () => {
+  const redirected = new Response("login");
+  Object.defineProperties(redirected, { redirected: { value: true }, url: { value: "http://localhost/login" } });
+  vi.stubGlobal("fetch", vi.fn(async () => redirected));
+  render(<WorkspaceSync conversationId="c" revision="v1" />);
+  await act(async () => {});
+  expect(screen.getByRole("alert")).toHaveTextContent("管理员登录已失效");
+});

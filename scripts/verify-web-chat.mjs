@@ -173,7 +173,16 @@ try {
     await staff.bringToFront();
     await expect(staff.locator('.context-next-action')).toContainText('核对对话底部的退款申请', { timeout: 15000 });
     await expect(staff.locator('.ai-activity').filter({ hasText: '提交退款审批' })).toHaveCount(1);
+    const approvalObserver = await staffContext.newPage();
+    approvalObserver.on('pageerror', error => browserErrors.push(error.message));
+    await approvalObserver.goto(`${origin}/conversations/${approval.conversationId}`);
+    await expect(approvalObserver.getByRole('button', { name: '批准退款', exact: true })).toBeVisible();
     await staff.getByRole('button', { name: decision === 'approve' ? '批准退款' : '拒绝退款', exact: true }).click();
+    await approvalObserver.bringToFront();
+    await expect(approvalObserver.getByRole('button', { name: '批准退款', exact: true })).toHaveCount(0, { timeout: 15000 });
+    await expect(approvalObserver.locator('.approval-panel')).toContainText(decision === 'approve' ? '已批准并退款' : '已拒绝');
+    await approvalObserver.close();
+    await staff.bringToFront();
     await expect(staff.getByRole('button', { name: '批准退款', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('消息历史')).toContainText(expectedText, { timeout: 10000 });
     await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
@@ -279,8 +288,15 @@ try {
   assert.deepEqual(uiConsoleErrors, [], 'workspace console errors');
   await staff.getByRole('button', { name: '您好，我来为您处理。', exact: true }).click();
   await expect(staff.getByLabel('人工回复', { exact: true })).toHaveValue('您好，我来为您处理。');
-  await staff.getByLabel('人工回复', { exact: true }).fill('');
-  await staff.getByRole('button', { name: '标记已解决' }).click();
+  await staff.getByLabel('人工回复', { exact: true }).fill('跨窗口关闭时保留的草稿');
+  const closer = await staffContext.newPage();
+  closer.on('pageerror', error => browserErrors.push(error.message));
+  await closer.goto(`${origin}/conversations/${handoff.id}`);
+  await closer.getByRole('button', { name: '标记已解决' }).click();
+  await closer.close();
+  await staff.bringToFront();
+  await expect(staff.getByRole('button', { name: '发送人工回复', exact: true })).toBeDisabled({ timeout: 15000 });
+  await expect(staff.getByLabel('人工回复', { exact: true })).toHaveValue('跨窗口关闭时保留的草稿');
   await expect(page.getByRole('status')).toContainText('会话已解决');
   await expect(page.getByLabel('消息', { exact: true })).toBeDisabled();
   assert.equal((await post({ conversationId: handoff.id, content: 'late customer reply' })).status, 409);
@@ -314,6 +330,28 @@ try {
   await staff.screenshot({ path: '.next/acceptance/queue-sync.png', fullPage: true });
   staff.off('console', collectUiConsole);
   assert.deepEqual(uiConsoleErrors, [], 'queue sync console errors');
+  // Real offline/online transitions preserve the queue's unsent search and recover data.
+  await staffContext.setOffline(true);
+  await expect(staff.locator('.workspace-sync')).toContainText('同步暂时中断', { timeout: 15000 });
+  await client.conversation.create({ data: { customerId: 'queue-sync-recovered', status: 'open', messages: { create: { role: 'customer', content: '断线期间新会话' } } } });
+  await staffContext.setOffline(false);
+  await staff.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(staff.locator('.conversation-row').filter({ hasText: 'queue-sync-recovered' })).toHaveCount(1, { timeout: 15000 });
+  await expect(staff.getByRole('searchbox')).toHaveValue('尚未提交的搜索');
+  // Expired admin identity should be diagnosed, and logging in elsewhere resumes sync.
+  await staffContext.clearCookies();
+  await expect(staff.locator('.workspace-sync')).toContainText('管理员登录已失效', { timeout: 15000 });
+  await expect(staff.getByRole('searchbox')).toHaveValue('尚未提交的搜索');
+  const reauth = await staffContext.newPage();
+  await reauth.goto(origin + '/login');
+  await reauth.getByLabel('管理密码').fill(password);
+  await reauth.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(reauth).toHaveURL(origin + '/');
+  await reauth.close();
+  await staff.bringToFront();
+  await staff.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(staff.locator('.workspace-sync')).toContainText('自动同步已开启', { timeout: 15000 });
+  await expect(staff.getByRole('searchbox')).toHaveValue('尚未提交的搜索');
   await staffContext.close();
   await page.setViewportSize({ width: 390, height: 844 });
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'mobile overflow');
@@ -358,7 +396,7 @@ try {
     const contents = await readFile(join(entry.parentPath, entry.name), 'utf8');
     for (const value of [token, password, customerPassword, resetPassword, env.WEB_CHAT_SESSION_SECRET, env.ADMIN_UI_SESSION_SECRET, 'INTERNAL_API_TOKENS', 'WEB_CHAT_SESSION_SECRET']) assert(!contents.includes(value), 'client bundle credential leakage');
   }
-  console.log(`${useHttps ? 'HTTPS loopback TLS proxy' : 'HTTP loopback'}; ` + 'PASS: real customer login, account switch, disable/enable, throttle, logout replay; human handoff/staff reply/customer follow-up/close with no AI execution; real browser order query, reload/history, explicit refund selection, automatic approve/reject updates, failure draft/retry, mobile layout, expired session; HTTP identity isolation/CSRF/state guards; client bundle secret scan.');
+  console.log(`${useHttps ? 'HTTPS loopback TLS proxy' : 'HTTP loopback'}; ` + 'PASS: real customer login, account switch, disable/enable, throttle, logout replay; human handoff/staff reply/customer follow-up/close with no AI execution; real browser order query, reload/history, explicit refund selection, automatic approve/reject updates, failure draft/retry, mobile layout, expired session; cross-window approval/close with draft retention; filtered queue sync, offline recovery and admin re-login; HTTP identity isolation/CSRF/state guards; client bundle secret scan.');
 } finally {
   await browser?.close();
   if (server && server.exitCode === null) { server.kill(); await new Promise(r => server.once('exit', r)); }
