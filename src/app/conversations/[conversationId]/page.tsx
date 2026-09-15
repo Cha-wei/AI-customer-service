@@ -16,10 +16,11 @@ import { ConversationNotFoundError } from "@/modules/conversations";
 import { getConversationService } from "@/modules/conversations/composition-root";
 import { MessageHistory } from "./message-history";
 import { getApprovalService } from "@/modules/approvals/composition-root";
+import { CustomerConsultations, type ConsultationFilters } from "@/components/workspace/customer-consultations";
 
 export const dynamic = "force-dynamic";
 
-export default async function ConversationDetail({ params, searchParams }: { params: Promise<{ conversationId: string }>; searchParams?: Promise<{ notice?: string; executionPage?: string; query?: string; status?: string; page?: string }> }) {
+export default async function ConversationDetail({ params, searchParams }: { params: Promise<{ conversationId: string }>; searchParams?: Promise<ConsultationFilters & { notice?: string; executionPage?: string }> }) {
   await requireAdminSession();
   const { conversationId } = await params;
   const filters = await searchParams;
@@ -33,7 +34,8 @@ export default async function ConversationDetail({ params, searchParams }: { par
   const approvals = await getApprovalService().list(conversation.id, conversation.customerId);
   const activity = await readMessageActivity(conversation.id, messages.messages.map(message => message.id));
 
-  const inbox = await ConversationList({ filters, selectedId: conversation.id });
+  const inbox = await ConversationList({ filters, selectedId: conversation.id, selectedCustomerId: conversation.customerId });
+  const consultations = await CustomerConsultations({ customerId: conversation.customerId, conversationId, status: conversation.status, filters });
   const context = await ContextPanel({ conversation, page, executionPage, filters, approvals, latestExecution: snapshot.latestExecution });
   return <WorkspaceLayout inbox={inbox} context={context} filter={filters?.status}>
 
@@ -46,6 +48,7 @@ export default async function ConversationDetail({ params, searchParams }: { par
           <Button size="sm" variant="outline" name="status" value="resolved">标记已解决</Button>
         </form>}
     </ConversationHeader>
+    {consultations}
     {conversation.status === "processing" && <p className="workspace-notice">正在执行，请等待执行结束后再更新状态。</p>}
     {notice && <p className="workspace-notice" role="alert">{notice === "conflict" ? "会话状态已改变或正在执行，请刷新后重试。" : "更新失败，请稍后重试。"}</p>}
     <div className="conversation-thread">

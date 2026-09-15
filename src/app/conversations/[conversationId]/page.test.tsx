@@ -7,6 +7,10 @@ vi.mock("@/components/workspace/workspace-sync", () => ({ WorkspaceSync: () => n
 const { getHeader, listMessages, listExecutions } = vi.hoisted(() => ({ getHeader: vi.fn(), listMessages: vi.fn(), listExecutions: vi.fn() }));
 vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/components/workspace/customer-queue-reader", () => ({
+  readCustomerQueue: async () => ({ conversations: [], page: 1, pageSize: 20, total: 0 }),
+  readCustomerConsultations: async () => ({ conversations: [], page: 1, pageSize: 10, total: 0 }),
+}));
 vi.mock("@/components/workspace/workspace-data", () => ({ readMessageActivity: async () => [] }));
 vi.mock("@/modules/approvals/composition-root", () => ({ getApprovalService: () => ({ list: async () => [] }) }));
 vi.mock("@/modules/conversations/composition-root", () => ({

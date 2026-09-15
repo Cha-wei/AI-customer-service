@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ConversationPage } from "@/modules/conversations/repository";
-import { getConversationService } from "@/modules/conversations/composition-root";
+import { prisma } from "@/lib/prisma";
+import { readCustomerQueue } from "./customer-queue-reader";
 import { isConversationStatus, type ConversationStatus } from "@/modules/conversations/domain";
 import { resolveDisplayQuery } from "./presentation";
 
@@ -14,7 +15,7 @@ export function normalizeInboxFilters(filters: InboxFilters): { query: string; s
 }
 export async function readQueuePage(filters: InboxFilters) {
   const { query, status, requestedPage } = normalizeInboxFilters(filters);
-  return getConversationService().list({ query: resolveDisplayQuery(query), status, page: requestedPage });
+  return readCustomerQueue(prisma, { query: resolveDisplayQuery(query), status, page: Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1, pageSize: 20 });
 }
 export function queueRevision(page: ConversationPage, now: number) {
   // A minute boundary refreshes elapsed labels even when no new message arrives.

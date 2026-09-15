@@ -253,11 +253,11 @@ try {
   await staff.getByRole('navigation', { name: '会话状态筛选' }).getByRole('link', { name: '人工接管', exact: true }).click();
   await staff.locator(`a[href^="/conversations/${handoff.id}"]`).click();
   await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
-  const handoffRow = staff.locator(`a.conversation-row[href^="/conversations/${handoff.id}"]`);
+  const handoffRow = staff.locator(`a.consultation-option[href^="/conversations/${handoff.id}"]`);
   await expect(handoffRow).toContainText('待人工首次回复');
   const replyObserver = await staffContext.newPage();
   await replyObserver.goto(`${origin}/conversations/${handoff.id}`);
-  await expect(replyObserver.locator(`a.conversation-row[href^="/conversations/${handoff.id}"]`)).toContainText('待人工首次回复');
+  await expect(replyObserver.locator(`a.consultation-option[href^="/conversations/${handoff.id}"]`)).toContainText('待人工首次回复');
   await staff.bringToFront();
   const beforeReply = await client.message.findFirstOrThrow({ where: { conversationId: handoff.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
   await staff.getByLabel('人工回复', { exact: true }).fill('您好，人工客服已接手，请说明问题。');
@@ -271,7 +271,7 @@ try {
   await expect(handoffRow).toContainText('人工跟进', { timeout: 15000 });
   await expect(handoffRow).not.toContainText('等待人工');
   await replyObserver.bringToFront();
-  await expect(replyObserver.locator(`a.conversation-row[href^="/conversations/${handoff.id}"]`)).toContainText('人工跟进', { timeout: 15000 });
+  await expect(replyObserver.locator(`a.consultation-option[href^="/conversations/${handoff.id}"]`)).toContainText('人工跟进', { timeout: 15000 });
   await replyObserver.close();
   await staff.bringToFront();
   await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
@@ -285,8 +285,8 @@ try {
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(staff.locator('.message-list')).toContainText('退款原因是包装损坏');
   await staff.bringToFront();
-  await expect(staff.locator('.conversation-row').filter({ hasText: '退款原因是包装损坏' })).toContainText('待人工回复', { timeout: 15000 });
-  await expect(staff.locator('.conversation-row').filter({ hasText: '退款原因是包装损坏' })).toContainText('客户等待');
+  await expect(handoffRow).toContainText('待人工回复', { timeout: 15000 });
+  await expect(handoffRow).toContainText('客户等待');
   await expect.poll(() => atBottom(staff.locator('.message-list'))).toBe(true);
   assert.equal((await post({ conversationId: handoff.id, content: '重复留言' })).status, 409);
   assert.equal(await client.runtimeExecution.count({ where: { conversationId: handoff.id } }), executionCount, 'no AI in human mode');
@@ -296,7 +296,7 @@ try {
   await staff.getByLabel('人工回复', { exact: true }).fill('已记录您的问题，本次咨询处理完成。');
   await staff.getByRole('button', { name: '发送人工回复' }).click();
   await expect(page.getByLabel('消息历史')).toContainText('本次咨询处理完成');
-  await expect(staff.locator('.conversation-row').filter({ hasText: '本次咨询处理完成' })).not.toContainText('客户等待', { timeout: 15000 });
+  await expect(handoffRow).not.toContainText('客户等待', { timeout: 15000 });
   assert.equal(await page.getByLabel('消息历史').evaluate(element => element.scrollTop), 0, 'reading position retained');
   await page.getByRole('button', { name: '查看最新消息', exact: true }).click();
   await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
@@ -359,6 +359,31 @@ try {
   await page.screenshot({ path: '.next/acceptance/customer.png', fullPage: true });
   await staff.screenshot({ path: '.next/acceptance/admin.png', fullPage: true });
   staff.on('console', collectUiConsole);
+  // Customer grouping: one row, older pending approval wins over newer resolved history.
+  const groupedPending = await client.conversation.create({ data: { customerId: 'customer-1', status: 'waiting_approval', updatedAt: new Date(1000), messages: { create: { role: 'customer', content: '模拟：较早的待审批咨询' } } } });
+  await client.approval.create({ data: { conversationId: groupedPending.id, customerId: 'customer-1', executionId: 'isolated-grouping-fixture', orderId: 'order-1002', reason: '模拟聚合验收，不执行', status: 'pending' } });
+  for (let i = 0; i < 11; i++) await client.conversation.create({ data: { customerId: 'customer-1', status: 'resolved', messages: { create: { role: 'system', content: '模拟历史咨询 ' + i } } } });
+  await staff.goto(origin + '/');
+  await expect(staff.locator('.conversation-row')).toHaveCount(2);
+  const groupedRow = staff.locator('.conversation-row[data-customer-id="customer-1"]');
+  await expect(groupedRow).toContainText('待审批 1');
+  await expect(groupedRow).toHaveAttribute('href', '/conversations/' + groupedPending.id);
+  await groupedRow.click();
+  await expect(staff.locator('.approval-panel')).toContainText('模拟聚合验收');
+  const historySection = staff.locator('.customer-consultations details').filter({ hasText: '查看历史咨询' });
+  await expect(historySection).not.toHaveAttribute('open', '');
+  await historySection.locator('summary').click();
+  await expect(historySection.locator('.consultation-option')).toHaveCount(10);
+  await historySection.getByRole('link', { name: '下一页', exact: true }).click();
+  await staff.locator(`.consultation-option[href^="/conversations/${id}?"]`).click();
+  await expect(staff.locator('.consultation-scope')).toContainText('历史咨询 · 已解决');
+  await expect(staff.locator('.approval-panel')).toContainText('已批准并退款');
+  await expect(staff.getByRole('button', { name: '发送人工回复', exact: true })).toHaveCount(0);
+  await expect(staff.locator('.conversation-row.selected')).toHaveCount(1);
+  await staff.locator('.customer-consultations details').filter({ hasText: '切换进行中咨询' }).locator('summary').click();
+  await staff.locator(`.consultation-option[href^="/conversations/${groupedPending.id}?"]`).click();
+  await expect(staff.locator('.approval-panel')).toContainText('模拟聚合验收');
+  await staff.screenshot({ path: '.next/acceptance/customer-grouped-queue.png', fullPage: true });
   // Queue-only page observes new and changed conversations without navigation.
   await staff.goto(origin + '/?status=open&query=queue-sync');
   await staff.bringToFront();
@@ -369,6 +394,7 @@ try {
   await staff.getByRole('link', { name: '下一页', exact: true }).click();
   await expect(staff.locator('.conversation-row')).toHaveCount(4);
   await staff.getByRole('link', { name: '上一页', exact: true }).click();
+  await expect(staff.locator('.conversation-row')).toHaveCount(20);
   const queueList = staff.locator('.conversation-list');
   await queueList.evaluate(el => { el.scrollTop = 240; });
   await staff.getByRole('searchbox').fill('尚未提交的搜索');

@@ -4,14 +4,13 @@ import Home from "./page";
 
 const { list } = vi.hoisted(() => ({ list: vi.fn() }));
 vi.mock("@/modules/admin-auth", () => ({ requireAdminSession: vi.fn() }));
-vi.mock("@/modules/conversations/composition-root", () => ({
-  getConversationService: () => ({ list }),
-}));
+vi.mock("@/lib/prisma", () => ({ prisma: {} }));
+vi.mock("@/components/workspace/customer-queue-reader", () => ({ readCustomerQueue: list }));
 
 describe("conversation management page", () => {
   beforeEach(() => list.mockReset());
 
-  const page = (conversations: unknown[], overrides = {}) => ({ conversations, page: 1, pageSize: 20, total: conversations.length, ...overrides });
+  const page = (conversations: object[], overrides = {}) => ({ conversations: conversations.map(c => ({ ...c, latest: c, activeCount: 1, humanCount: 0, pendingApprovals: 0, consultationCount: 1 })), page: 1, pageSize: 20, total: conversations.length, ...overrides });
 
   it("shows the required conversation summary", async () => {
     list.mockResolvedValue(page([{
@@ -23,7 +22,7 @@ describe("conversation management page", () => {
       updatedAt: new Date("2026-09-12T08:30:00Z"),
     }]));
     render(await Home({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByRole("heading", { name: /会话队列/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /客户队列/ })).toBeInTheDocument();
     expect(screen.getByText("陈雨")).toBeInTheDocument();
     expect(screen.getAllByText("待处理").length).toBeGreaterThan(0);
     expect(screen.getByText("我的订单什么时候到？")).toBeInTheDocument();
@@ -54,13 +53,13 @@ describe("conversation management page", () => {
     render(await Home({ searchParams: Promise.resolve({ query: "订单", status: "open" }) }));
     expect(screen.getByText("陈雨")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "清除" })).toBeInTheDocument();
-    expect(list).toHaveBeenCalledWith({ query: "订单", status: "open", page: 1 });
+    expect(list).toHaveBeenCalledWith({}, { query: "订单", status: "open", page: 1, pageSize: 20 });
   });
 
   it("maps the demo display name to the existing customer ID before database search", async () => {
     list.mockResolvedValue(page([]));
     render(await Home({ searchParams: Promise.resolve({ query: "陈雨", status: "open" }) }));
-    expect(list).toHaveBeenCalledWith({ query: "customer-1", status: "open", page: 1 });
+    expect(list).toHaveBeenCalledWith({}, { query: "customer-1", status: "open", page: 1, pageSize: 20 });
     expect(screen.getByRole("searchbox")).toHaveValue("陈雨");
   });
 });

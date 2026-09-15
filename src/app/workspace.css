@@ -1,4 +1,13 @@
 @layer components {
+.customer-consultations { flex-shrink: 0; padding: 8px 20px; border-bottom: 1px solid var(--ws-line); font-size: 11px; }
+.consultation-scope { color: var(--ws-muted); margin-bottom: 6px; }
+.customer-consultations summary { cursor: pointer; color: var(--ws-brand); padding: 4px 0; }
+.consultation-options { max-height: 150px; overflow-y: auto; }
+.consultation-option { display: flex; flex-direction: column; gap: 3px; padding: 6px; border-bottom: 1px solid var(--ws-line); }
+.consultation-option[aria-current="page"] { background: var(--ws-tint); }
+.consultation-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ws-muted); }
+.consultation-options nav { display: flex; justify-content: space-between; padding: 6px; }
+.queue-aggregate { display: block; color: var(--ws-muted); font-size: 10px; margin: 4px 0; }
 /* Workspace v2: layout sizes and visual tokens stay local to the admin surface. */
 .workspace {
   --ws-canvas: #f7f8fa; --ws-surface: #fff; --ws-soft: #f4f5f8;
