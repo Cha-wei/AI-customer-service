@@ -156,6 +156,14 @@ try {
   await mkdir('.next/acceptance', { recursive: true });
   await staff.setViewportSize({ width: 1440, height: 900 });
   await staff.screenshot({ path: '.next/acceptance/workspace-v2-order.png', animations: 'disabled', fullPage: true });
+  await expect(staff.locator('.customer-orders')).toContainText('最近查询结果 · 非客户选定');
+  await expect(staff.locator('.customer-orders')).toContainText('MOCK1001');
+  await expect(staff.locator('.customer-orders')).toContainText('MOCK1002');
+  await expect(staff.locator('.context-content .ai-status')).toContainText('AI 客服');
+  // Simulated Chinese trial: a second question in the same automatic conversation.
+  await page.getByLabel('消息', { exact: true }).fill('请再查一下我的订单物流');
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect.poll(() => client.runtimeExecution.count({ where: { conversationId: id, status: 'completed' } })).toBe(2);
 
 
   for (const [orderId, decision, expectedText] of [['order-1001', 'approve', '已完成 Mock 退款'], ['order-1002', 'reject', '未执行退款']]) {
@@ -173,6 +181,8 @@ try {
     await staff.bringToFront();
     await expect(staff.locator('.context-next-action')).toContainText('核对对话底部的退款申请', { timeout: 15000 });
     await expect(staff.locator('.ai-activity').filter({ hasText: '提交退款审批' })).toHaveCount(1);
+    await expect(staff.locator('.customer-orders').getByRole('article', { name: `订单 ${orderId}`, exact: true })).toContainText('待审批订单');
+    await staff.screenshot({ path: `.next/acceptance/trial-${decision}-pending.png`, fullPage: true });
     const approvalObserver = await staffContext.newPage();
     approvalObserver.on('pageerror', error => browserErrors.push(error.message));
     await approvalObserver.goto(`${origin}/conversations/${approval.conversationId}`);
@@ -185,8 +195,29 @@ try {
     await staff.bringToFront();
     await expect(staff.getByRole('button', { name: '批准退款', exact: true })).toHaveCount(0);
     await expect(page.getByLabel('消息历史')).toContainText(expectedText, { timeout: 10000 });
+    assert.equal(await client.mockRefund.count({ where: { orderId } }), decision === 'approve' ? 1 : 0, 'approval result agrees with actual Mock refund');
     await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeDisabled();
   }
+  // Existing Mock customer-2 has no orders; unknown questions must not invent answers.
+  await otherPage.getByLabel('消息', { exact: true }).fill('我的订单什么时候到？');
+  await otherPage.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(otherPage.getByLabel('消息历史')).toContainText('没有查询到您的订单');
+  const emptyOrderConversation = await client.conversation.findFirstOrThrow({ where: { customerId: 'customer-2' }, orderBy: { createdAt: 'desc' } });
+  await staff.goto(`${origin}/conversations/${emptyOrderConversation.id}`);
+  await expect(staff.locator('.customer-orders')).toContainText('暂无关联订单');
+  await expect(staff.locator('.context-content')).toContainText('未找到匹配订单');
+  await staff.getByRole('button', { name: '转人工', exact: true }).click();
+  await expect(staff.locator('.context-content .ai-status')).toContainText('人工接管中');
+  await expect(staff.getByLabel('人工回复', { exact: true })).toBeEnabled();
+  await otherPage.getByRole('button', { name: '新建会话' }).click();
+  await otherPage.getByLabel('消息', { exact: true }).fill('你们支持火星定居咨询吗？');
+  await otherPage.getByRole('button', { name: '发送消息', exact: true }).click();
+  await expect(otherPage.getByRole('status')).toContainText('等待人工客服回复');
+  const unknownConversation = await client.conversation.findFirstOrThrow({ where: { customerId: 'customer-2' }, orderBy: { createdAt: 'desc' } });
+  assert.equal(await client.approval.count({ where: { conversationId: unknownConversation.id } }), 0);
+  await staff.goto(`${origin}/conversations/${unknownConversation.id}`);
+  await expect(staff.locator('.context-next-action')).toContainText('继续人工回复');
+  await staff.screenshot({ path: '.next/acceptance/trial-unknown.png', fullPage: true });
   // A failed send preserves the draft, and a later successful send still works.
   await page.getByRole('button', { name: '新建会话' }).click();
   await page.getByLabel('消息', { exact: true }).fill('订单物流');
@@ -234,6 +265,9 @@ try {
   await expect(page.getByLabel('请选择退款订单（必选）')).toHaveCount(0);
   await page.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(staff.locator('.message-list')).toContainText('退款原因是包装损坏');
+  await staff.bringToFront();
+  await expect(staff.locator('.conversation-row').filter({ hasText: '退款原因是包装损坏' })).toContainText('待人工回复', { timeout: 15000 });
+  await expect(staff.locator('.conversation-row').filter({ hasText: '退款原因是包装损坏' })).toContainText('客户等待');
   await expect.poll(() => atBottom(staff.locator('.message-list'))).toBe(true);
   assert.equal((await post({ conversationId: handoff.id, content: '重复留言' })).status, 409);
   assert.equal(await client.runtimeExecution.count({ where: { conversationId: handoff.id } }), executionCount, 'no AI in human mode');
@@ -243,6 +277,7 @@ try {
   await staff.getByLabel('人工回复', { exact: true }).fill('已记录您的问题，本次咨询处理完成。');
   await staff.getByRole('button', { name: '发送人工回复' }).click();
   await expect(page.getByLabel('消息历史')).toContainText('本次咨询处理完成');
+  await expect(staff.locator('.conversation-row').filter({ hasText: '本次咨询处理完成' })).not.toContainText('客户等待', { timeout: 15000 });
   assert.equal(await page.getByLabel('消息历史').evaluate(element => element.scrollTop), 0, 'reading position retained');
   await page.getByRole('button', { name: '查看最新消息', exact: true }).click();
   await expect.poll(() => atBottom(page.getByLabel('消息历史'))).toBe(true);
